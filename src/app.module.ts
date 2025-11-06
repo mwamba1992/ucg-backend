@@ -5,6 +5,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { typeOrmConfig } from './config/typeorm.config';
 import { ServiceProviderModule } from './modules/service-provider/service-provider.module';
+import { ReferenceModule } from './modules/reference/reference.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { ServiceProviderModule } from './modules/service-provider/service-provid
 
     // Feature modules
     ServiceProviderModule,
+    ReferenceModule,
   ],
   controllers: [AppController],
   providers: [AppService],
