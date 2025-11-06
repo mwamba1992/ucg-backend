@@ -3,6 +3,96 @@ import {
   ServiceProviderType,
   OnboardingStatus,
 } from '../entities/service-provider.entity';
+import { ServiceProviderContact } from '../entities/service-provider-contact.entity';
+import { ServiceProviderBankAccount } from '../entities/service-provider-bank-account.entity';
+import { ServiceProviderSettings } from '../entities/service-provider-settings.entity';
+
+export class ContactResponseDto {
+  @ApiProperty()
+  id: string;
+
+  @ApiProperty()
+  fullName: string;
+
+  @ApiProperty()
+  phoneNumber: string;
+
+  @ApiProperty()
+  email: string;
+
+  @ApiPropertyOptional()
+  idNumber?: string;
+
+  @ApiPropertyOptional()
+  position?: string;
+}
+
+export class BankAccountResponseDto {
+  @ApiProperty()
+  id: string;
+
+  @ApiProperty()
+  bankName: string;
+
+  @ApiProperty()
+  accountNumber: string;
+
+  @ApiProperty()
+  accountName: string;
+
+  @ApiPropertyOptional()
+  swiftCode?: string;
+
+  @ApiPropertyOptional()
+  branchName?: string;
+
+  @ApiProperty()
+  accountType: string;
+
+  @ApiProperty()
+  isPrimary: boolean;
+
+  @ApiProperty()
+  isActive: boolean;
+}
+
+export class SettingsResponseDto {
+  @ApiProperty()
+  id: string;
+
+  @ApiProperty()
+  commissionRate: number;
+
+  @ApiProperty()
+  settlementFrequency: string;
+
+  @ApiProperty()
+  autoSettlement: boolean;
+
+  @ApiProperty()
+  minimumSettlementAmount: number;
+
+  @ApiPropertyOptional()
+  webhookUrl?: string;
+
+  @ApiProperty()
+  webhookEnabled: boolean;
+
+  @ApiProperty()
+  emailNotifications: boolean;
+
+  @ApiProperty()
+  smsNotifications: boolean;
+
+  @ApiPropertyOptional()
+  dailyTransactionLimit?: number;
+
+  @ApiProperty()
+  apiRateLimit: number;
+
+  @ApiProperty()
+  apiEnabled: boolean;
+}
 
 export class ServiceProviderResponseDto {
   @ApiProperty()
@@ -38,27 +128,6 @@ export class ServiceProviderResponseDto {
   @ApiPropertyOptional()
   district?: string;
 
-  @ApiProperty()
-  contactPersonName: string;
-
-  @ApiProperty()
-  contactPersonPhone: string;
-
-  @ApiProperty()
-  contactPersonEmail: string;
-
-  @ApiPropertyOptional()
-  contactPersonIdNumber?: string;
-
-  @ApiPropertyOptional()
-  bankName?: string;
-
-  @ApiPropertyOptional()
-  bankAccountNumber?: string;
-
-  @ApiPropertyOptional()
-  bankAccountName?: string;
-
   @ApiProperty({ enum: OnboardingStatus })
   status: OnboardingStatus;
 
@@ -76,6 +145,15 @@ export class ServiceProviderResponseDto {
 
   @ApiPropertyOptional()
   apiKey?: string;
+
+  @ApiProperty({ type: ContactResponseDto })
+  contact: ContactResponseDto;
+
+  @ApiProperty({ type: [BankAccountResponseDto] })
+  bankAccounts: BankAccountResponseDto[];
+
+  @ApiProperty({ type: SettingsResponseDto })
+  settings: SettingsResponseDto;
 
   @ApiProperty()
   createdAt: Date;

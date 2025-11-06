@@ -5,8 +5,11 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Like, FindOptionsWhere } from 'typeorm';
+import { Repository, FindOptionsWhere } from 'typeorm';
 import { ServiceProvider, OnboardingStatus } from './entities/service-provider.entity';
+import { ServiceProviderContact } from './entities/service-provider-contact.entity';
+import { ServiceProviderBankAccount } from './entities/service-provider-bank-account.entity';
+import { ServiceProviderSettings } from './entities/service-provider-settings.entity';
 import { CreateServiceProviderDto } from './dto/create-service-provider.dto';
 import { UpdateServiceProviderDto } from './dto/update-service-provider.dto';
 import { QueryServiceProviderDto } from './dto/query-service-provider.dto';
@@ -17,6 +20,12 @@ export class ServiceProviderService {
   constructor(
     @InjectRepository(ServiceProvider)
     private readonly serviceProviderRepository: Repository<ServiceProvider>,
+    @InjectRepository(ServiceProviderContact)
+    private readonly contactRepository: Repository<ServiceProviderContact>,
+    @InjectRepository(ServiceProviderBankAccount)
+    private readonly bankAccountRepository: Repository<ServiceProviderBankAccount>,
+    @InjectRepository(ServiceProviderSettings)
+    private readonly settingsRepository: Repository<ServiceProviderSettings>,
   ) {}
 
   /**
@@ -52,7 +61,7 @@ export class ServiceProviderService {
   }
 
   /**
-   * Create a new service provider
+   * Create a new service provider with related entities
    */
   async create(createDto: CreateServiceProviderDto): Promise<ServiceProvider> {
     // Check if email already exists
@@ -67,14 +76,49 @@ export class ServiceProviderService {
     // Generate SP code
     const spCode = await this.generateSpCode(createDto.businessName);
 
-    // Create service provider
+    // Create service provider (main entity)
     const serviceProvider = this.serviceProviderRepository.create({
-      ...createDto,
       spCode,
+      businessName: createDto.businessName,
+      businessType: createDto.businessType,
+      registrationNumber: createDto.registrationNumber,
+      tinNumber: createDto.tinNumber,
+      phoneNumber: createDto.phoneNumber,
+      email: createDto.email,
+      physicalAddress: createDto.physicalAddress,
+      region: createDto.region,
+      district: createDto.district,
       status: OnboardingStatus.PENDING,
     });
 
-    return await this.serviceProviderRepository.save(serviceProvider);
+    // Save service provider first to get the ID
+    const savedSp = await this.serviceProviderRepository.save(serviceProvider);
+
+    // Create contact
+    const contact = this.contactRepository.create({
+      ...createDto.contact,
+      serviceProviderId: savedSp.id,
+    });
+    await this.contactRepository.save(contact);
+
+    // Create bank accounts
+    const bankAccounts = createDto.bankAccounts.map((account) =>
+      this.bankAccountRepository.create({
+        ...account,
+        serviceProviderId: savedSp.id,
+      }),
+    );
+    await this.bankAccountRepository.save(bankAccounts);
+
+    // Create settings (use defaults if not provided)
+    const settings = this.settingsRepository.create({
+      ...createDto.settings,
+      serviceProviderId: savedSp.id,
+    });
+    await this.settingsRepository.save(settings);
+
+    // Reload with relations
+    return await this.findOne(savedSp.id);
   }
 
   /**
@@ -99,6 +143,9 @@ export class ServiceProviderService {
 
     const queryBuilder = this.serviceProviderRepository
       .createQueryBuilder('sp')
+      .leftJoinAndSelect('sp.contact', 'contact')
+      .leftJoinAndSelect('sp.bankAccounts', 'bankAccounts')
+      .leftJoinAndSelect('sp.settings', 'settings')
       .where(where);
 
     // Search functionality
@@ -135,6 +182,7 @@ export class ServiceProviderService {
   async findOne(id: string): Promise<ServiceProvider> {
     const serviceProvider = await this.serviceProviderRepository.findOne({
       where: { id },
+      relations: ['contact', 'bankAccounts', 'settings'],
     });
 
     if (!serviceProvider) {
@@ -150,6 +198,7 @@ export class ServiceProviderService {
   async findBySpCode(spCode: string): Promise<ServiceProvider> {
     const serviceProvider = await this.serviceProviderRepository.findOne({
       where: { spCode },
+      relations: ['contact', 'bankAccounts', 'settings'],
     });
 
     if (!serviceProvider) {
@@ -179,9 +228,40 @@ export class ServiceProviderService {
       }
     }
 
-    Object.assign(serviceProvider, updateDto);
+    // Update main entity fields
+    Object.assign(serviceProvider, {
+      businessName: updateDto.businessName,
+      businessType: updateDto.businessType,
+      registrationNumber: updateDto.registrationNumber,
+      tinNumber: updateDto.tinNumber,
+      phoneNumber: updateDto.phoneNumber,
+      email: updateDto.email,
+      physicalAddress: updateDto.physicalAddress,
+      region: updateDto.region,
+      district: updateDto.district,
+      status: updateDto.status,
+      rejectionReason: updateDto.rejectionReason,
+    });
 
-    return await this.serviceProviderRepository.save(serviceProvider);
+    // Update contact if provided
+    if (updateDto.contact) {
+      await this.contactRepository.update(
+        { serviceProviderId: id },
+        updateDto.contact,
+      );
+    }
+
+    // Update settings if provided
+    if (updateDto.settings) {
+      await this.settingsRepository.update(
+        { serviceProviderId: id },
+        updateDto.settings,
+      );
+    }
+
+    await this.serviceProviderRepository.save(serviceProvider);
+
+    return await this.findOne(id);
   }
 
   /**
@@ -204,7 +284,9 @@ export class ServiceProviderService {
     serviceProvider.approvedBy = approvedBy;
     serviceProvider.isActive = true;
 
-    return await this.serviceProviderRepository.save(serviceProvider);
+    await this.serviceProviderRepository.save(serviceProvider);
+
+    return await this.findOne(id);
   }
 
   /**
@@ -219,7 +301,9 @@ export class ServiceProviderService {
     serviceProvider.status = OnboardingStatus.REJECTED;
     serviceProvider.rejectionReason = rejectionReason;
 
-    return await this.serviceProviderRepository.save(serviceProvider);
+    await this.serviceProviderRepository.save(serviceProvider);
+
+    return await this.findOne(id);
   }
 
   /**
@@ -230,7 +314,9 @@ export class ServiceProviderService {
 
     serviceProvider.isActive = !serviceProvider.isActive;
 
-    return await this.serviceProviderRepository.save(serviceProvider);
+    await this.serviceProviderRepository.save(serviceProvider);
+
+    return await this.findOne(id);
   }
 
   /**

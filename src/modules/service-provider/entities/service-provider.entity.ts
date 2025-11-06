@@ -5,7 +5,12 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   Index,
+  OneToOne,
+  OneToMany,
 } from 'typeorm';
+import { ServiceProviderContact } from './service-provider-contact.entity';
+import { ServiceProviderBankAccount } from './service-provider-bank-account.entity';
+import { ServiceProviderSettings } from './service-provider-settings.entity';
 
 export enum ServiceProviderType {
   SCHOOL = 'SCHOOL',
@@ -38,6 +43,7 @@ export class ServiceProvider {
   @Index()
   spCode: string; // XXX - 3 character unique code
 
+  // Business Information
   @Column({ length: 200 })
   businessName: string;
 
@@ -69,42 +75,6 @@ export class ServiceProvider {
 
   @Column({ length: 100, nullable: true })
   district: string;
-
-  // Primary Contact Person
-  @Column({ length: 200 })
-  contactPersonName: string;
-
-  @Column({ length: 15 })
-  contactPersonPhone: string;
-
-  @Column({ length: 100 })
-  contactPersonEmail: string;
-
-  @Column({ length: 100, nullable: true })
-  contactPersonIdNumber: string; // NIDA number
-
-  // Bank Account Details
-  @Column({ length: 100, nullable: true })
-  bankName: string;
-
-  @Column({ length: 50, nullable: true })
-  bankAccountNumber: string;
-
-  @Column({ length: 100, nullable: true })
-  bankAccountName: string;
-
-  @Column({ length: 20, nullable: true })
-  bankSwiftCode: string;
-
-  // Settlement Configuration
-  @Column({ type: 'decimal', precision: 5, scale: 2, default: 0 })
-  commissionRate: number; // Percentage
-
-  @Column({ type: 'varchar', length: 20, default: 'DAILY' })
-  settlementFrequency: string; // DAILY, WEEKLY, MONTHLY
-
-  @Column({ type: 'boolean', default: true })
-  autoSettlement: boolean;
 
   // KYC Verification Status
   @Column({ type: 'boolean', default: false })
@@ -138,9 +108,6 @@ export class ServiceProvider {
   @Column({ length: 100, unique: true, nullable: true })
   apiKey: string;
 
-  @Column({ type: 'text', nullable: true })
-  webhookUrl: string;
-
   @Column({ type: 'boolean', default: false })
   isActive: boolean;
 
@@ -152,4 +119,23 @@ export class ServiceProvider {
 
   @Column({ type: 'timestamp', nullable: true })
   deletedAt: Date;
+
+  // Relationships
+  @OneToOne(() => ServiceProviderContact, (contact) => contact.serviceProvider, {
+    cascade: true,
+    eager: true,
+  })
+  contact: ServiceProviderContact;
+
+  @OneToMany(() => ServiceProviderBankAccount, (account) => account.serviceProvider, {
+    cascade: true,
+    eager: true,
+  })
+  bankAccounts: ServiceProviderBankAccount[];
+
+  @OneToOne(() => ServiceProviderSettings, (settings) => settings.serviceProvider, {
+    cascade: true,
+    eager: true,
+  })
+  settings: ServiceProviderSettings;
 }

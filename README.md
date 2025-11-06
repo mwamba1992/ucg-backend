@@ -5,8 +5,12 @@ Backend API for the Unified Collection Gateway (UCG) system. This is a NestJS mo
 ## Features Implemented
 
 ### Service Provider Onboarding Module
-- ✅ Service provider registration
+- ✅ Service provider registration with nested structure
 - ✅ Automatic SP code generation (3-character unique code)
+- ✅ **Normalized database design** (4 related tables)
+- ✅ Contact person management
+- ✅ Multiple bank accounts support
+- ✅ Settlement and API configuration
 - ✅ KYC verification tracking (NIDA, BRELA, TRA)
 - ✅ Approval/rejection workflow
 - ✅ API key generation for approved providers
@@ -105,20 +109,52 @@ http://localhost:3000/api/docs
 
 ### Example: Register Service Provider
 
-**Request:**
+**Request** (with normalized nested structure):
 ```bash
 curl -X POST http://localhost:3000/api/v1/service-providers \
   -H "Content-Type: application/json" \
   -d '{
     "businessName": "Mwanga Primary School",
     "businessType": "SCHOOL",
+    "registrationNumber": "BN123456789",
+    "tinNumber": "123-456-789",
     "email": "info@mwangaschool.co.tz",
     "phoneNumber": "+255712345678",
-    "contactPersonName": "John Doe",
-    "contactPersonPhone": "+255712345678",
-    "contactPersonEmail": "john@mwangaschool.co.tz",
     "region": "Dar es Salaam",
-    "district": "Kinondoni"
+    "district": "Kinondoni",
+    "physicalAddress": "Plot 123, Uhuru Street",
+
+    "contact": {
+      "fullName": "John Doe",
+      "phoneNumber": "+255712345678",
+      "email": "john@mwangaschool.co.tz",
+      "idNumber": "19901231-12345-67890-12",
+      "position": "Head Teacher"
+    },
+
+    "bankAccounts": [
+      {
+        "bankName": "CRDB Bank",
+        "accountNumber": "0150123456789",
+        "accountName": "Mwanga Primary School",
+        "swiftCode": "CORUTZTZ",
+        "branchName": "Kinondoni Branch",
+        "accountType": "CURRENT",
+        "isPrimary": true
+      }
+    ],
+
+    "settings": {
+      "commissionRate": 2.5,
+      "settlementFrequency": "DAILY",
+      "autoSettlement": true,
+      "minimumSettlementAmount": 10000,
+      "webhookUrl": "https://mwangaschool.co.tz/webhook",
+      "webhookEnabled": true,
+      "emailNotifications": true,
+      "smsNotifications": true,
+      "dailyTransactionLimit": 5000000
+    }
   }'
 ```
 
@@ -130,12 +166,44 @@ curl -X POST http://localhost:3000/api/v1/service-providers \
   "businessName": "Mwanga Primary School",
   "businessType": "SCHOOL",
   "email": "info@mwangaschool.co.tz",
+  "phoneNumber": "+255712345678",
   "status": "PENDING",
   "nidaVerified": false,
   "brelaVerified": false,
   "traVerified": false,
   "isActive": false,
-  "createdAt": "2025-11-06T10:00:00.000Z"
+
+  "contact": {
+    "id": "contact-uuid",
+    "fullName": "John Doe",
+    "phoneNumber": "+255712345678",
+    "email": "john@mwangaschool.co.tz",
+    "position": "Head Teacher"
+  },
+
+  "bankAccounts": [
+    {
+      "id": "bank-uuid",
+      "bankName": "CRDB Bank",
+      "accountNumber": "0150123456789",
+      "accountName": "Mwanga Primary School",
+      "isPrimary": true,
+      "isActive": true
+    }
+  ],
+
+  "settings": {
+    "id": "settings-uuid",
+    "commissionRate": 2.5,
+    "settlementFrequency": "DAILY",
+    "autoSettlement": true,
+    "minimumSettlementAmount": 10000,
+    "webhookEnabled": true,
+    "apiEnabled": true
+  },
+
+  "createdAt": "2025-11-06T10:00:00.000Z",
+  "updatedAt": "2025-11-06T10:00:00.000Z"
 }
 ```
 
@@ -160,45 +228,30 @@ GET /api/v1/service-providers?businessType=SCHOOL&status=APPROVED&page=1&limit=2
 
 ## Database Schema
 
-### Service Providers Table
+The database follows a **normalized structure** with 4 related tables:
 
-```sql
-- id (UUID, Primary Key)
-- spCode (VARCHAR(3), Unique) - Auto-generated unique code
-- businessName (VARCHAR(200))
-- businessType (ENUM) - SCHOOL, HOSPITAL, CHURCH, SACCO, MFI, NGO, UTILITY, etc.
-- registrationNumber (VARCHAR(100)) - BRELA number
-- tinNumber (VARCHAR(100)) - TRA TIN
-- phoneNumber (VARCHAR(15))
-- email (VARCHAR(100), Unique)
-- physicalAddress (TEXT)
-- region (VARCHAR(100))
-- district (VARCHAR(100))
-- contactPersonName (VARCHAR(200))
-- contactPersonPhone (VARCHAR(15))
-- contactPersonEmail (VARCHAR(100))
-- contactPersonIdNumber (VARCHAR(100)) - NIDA
-- bankName (VARCHAR(100))
-- bankAccountNumber (VARCHAR(50))
-- bankAccountName (VARCHAR(100))
-- bankSwiftCode (VARCHAR(20))
-- commissionRate (DECIMAL(5,2))
-- settlementFrequency (VARCHAR(20))
-- autoSettlement (BOOLEAN)
-- nidaVerified (BOOLEAN)
-- brelaVerified (BOOLEAN)
-- traVerified (BOOLEAN)
-- status (ENUM) - PENDING, UNDER_REVIEW, APPROVED, REJECTED, SUSPENDED, ACTIVE
-- rejectionReason (TEXT)
-- approvedAt (TIMESTAMP)
-- approvedBy (UUID)
-- apiKey (VARCHAR(100), Unique)
-- webhookUrl (TEXT)
-- isActive (BOOLEAN)
-- createdAt (TIMESTAMP)
-- updatedAt (TIMESTAMP)
-- deletedAt (TIMESTAMP)
+1. **service_providers** - Core business information
+2. **service_provider_contacts** - Contact person details (1:1)
+3. **service_provider_bank_accounts** - Bank account details (1:N, supports multiple accounts)
+4. **service_provider_settings** - Settlement and API configuration (1:1)
+
+**For detailed schema documentation, see:** [DATABASE_SCHEMA.md](./DATABASE_SCHEMA.md)
+
+### Quick Overview
+
 ```
+service_providers (Main)
+├── contact (1:1) → service_provider_contacts
+├── bankAccounts (1:N) → service_provider_bank_accounts
+└── settings (1:1) → service_provider_settings
+```
+
+**Benefits:**
+- ✅ Reduced data redundancy
+- ✅ Multiple bank accounts per service provider
+- ✅ Improved data integrity with foreign key constraints
+- ✅ Better query performance
+- ✅ Easier to maintain and extend
 
 ## Project Structure
 
@@ -213,9 +266,15 @@ ucg-backend/
 │   │       │   ├── create-service-provider.dto.ts
 │   │       │   ├── update-service-provider.dto.ts
 │   │       │   ├── query-service-provider.dto.ts
-│   │       │   └── service-provider-response.dto.ts
+│   │       │   ├── service-provider-response.dto.ts
+│   │       │   ├── contact.dto.ts
+│   │       │   ├── bank-account.dto.ts
+│   │       │   └── settings.dto.ts
 │   │       ├── entities/
-│   │       │   └── service-provider.entity.ts
+│   │       │   ├── service-provider.entity.ts
+│   │       │   ├── service-provider-contact.entity.ts
+│   │       │   ├── service-provider-bank-account.entity.ts
+│   │       │   └── service-provider-settings.entity.ts
 │   │       ├── service-provider.controller.ts
 │   │       ├── service-provider.service.ts
 │   │       └── service-provider.module.ts
@@ -223,12 +282,15 @@ ucg-backend/
 │   ├── app.controller.ts
 │   ├── app.service.ts
 │   └── main.ts
+├── .env
 ├── .env.example
 ├── .gitignore
 ├── nest-cli.json
 ├── package.json
 ├── tsconfig.json
-└── README.md
+├── README.md
+├── DATABASE_SCHEMA.md             # Detailed database documentation
+└── SETUP_GUIDE.md                 # Quick setup guide
 ```
 
 ## Next Steps

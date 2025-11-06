@@ -4,16 +4,23 @@ import {
   IsEnum,
   IsNotEmpty,
   IsOptional,
-  IsPhoneNumber,
   IsString,
-  Length,
   MaxLength,
-  MinLength,
+  ValidateNested,
+  IsArray,
+  ArrayMinSize,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { ServiceProviderType } from '../entities/service-provider.entity';
+import { CreateContactDto } from './contact.dto';
+import { CreateBankAccountDto } from './bank-account.dto';
+import { CreateSettingsDto } from './settings.dto';
 
 export class CreateServiceProviderDto {
-  @ApiProperty({ description: 'Business name', example: 'Mwanga Primary School' })
+  @ApiProperty({
+    description: 'Business name',
+    example: 'Mwanga Primary School',
+  })
   @IsNotEmpty()
   @IsString()
   @MaxLength(200)
@@ -91,82 +98,31 @@ export class CreateServiceProviderDto {
   district?: string;
 
   @ApiProperty({
-    description: 'Contact person full name',
-    example: 'John Doe',
+    description: 'Primary contact person details',
+    type: CreateContactDto,
   })
   @IsNotEmpty()
-  @IsString()
-  @MaxLength(200)
-  contactPersonName: string;
+  @ValidateNested()
+  @Type(() => CreateContactDto)
+  contact: CreateContactDto;
 
   @ApiProperty({
-    description: 'Contact person phone number',
-    example: '+255712345678',
+    description: 'Bank account details (at least one required)',
+    type: [CreateBankAccountDto],
+    isArray: true,
   })
-  @IsNotEmpty()
-  @IsString()
-  @MaxLength(15)
-  contactPersonPhone: string;
-
-  @ApiProperty({
-    description: 'Contact person email',
-    example: 'john.doe@mwangaschool.co.tz',
-  })
-  @IsNotEmpty()
-  @IsEmail()
-  @MaxLength(100)
-  contactPersonEmail: string;
+  @IsArray()
+  @ArrayMinSize(1, { message: 'At least one bank account is required' })
+  @ValidateNested({ each: true })
+  @Type(() => CreateBankAccountDto)
+  bankAccounts: CreateBankAccountDto[];
 
   @ApiPropertyOptional({
-    description: 'Contact person NIDA number',
-    example: '19901231-12345-67890-12',
+    description: 'Settlement and configuration settings',
+    type: CreateSettingsDto,
   })
   @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  contactPersonIdNumber?: string;
-
-  @ApiPropertyOptional({
-    description: 'Bank name',
-    example: 'CRDB Bank',
-  })
-  @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  bankName?: string;
-
-  @ApiPropertyOptional({
-    description: 'Bank account number',
-    example: '0150123456789',
-  })
-  @IsOptional()
-  @IsString()
-  @MaxLength(50)
-  bankAccountNumber?: string;
-
-  @ApiPropertyOptional({
-    description: 'Bank account name',
-    example: 'Mwanga Primary School',
-  })
-  @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  bankAccountName?: string;
-
-  @ApiPropertyOptional({
-    description: 'Bank SWIFT code',
-    example: 'CORUTZTZ',
-  })
-  @IsOptional()
-  @IsString()
-  @MaxLength(20)
-  bankSwiftCode?: string;
-
-  @ApiPropertyOptional({
-    description: 'Webhook URL for notifications',
-    example: 'https://mwangaschool.co.tz/api/webhook',
-  })
-  @IsOptional()
-  @IsString()
-  webhookUrl?: string;
+  @ValidateNested()
+  @Type(() => CreateSettingsDto)
+  settings?: CreateSettingsDto;
 }
