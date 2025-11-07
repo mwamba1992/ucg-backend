@@ -5,12 +5,14 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, FindOptionsWhere, LessThan } from 'typeorm';
+import { Repository, FindOptionsWhere, LessThan, Between } from 'typeorm';
 import { PaymentReference, ReferenceStatus } from './entities/payment-reference.entity';
+import { ReferenceBatch, BatchStatus } from './entities/reference-batch.entity';
 import { CreateReferenceDto } from './dto/create-reference.dto';
 import { UpdateReferenceDto } from './dto/update-reference.dto';
 import { QueryReferenceDto } from './dto/query-reference.dto';
 import { BulkCreateReferenceDto } from './dto/bulk-create-reference.dto';
+import { BulkGenerateReferenceDto } from './dto/bulk-generate-reference.dto';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -18,6 +20,8 @@ export class ReferenceService {
   constructor(
     @InjectRepository(PaymentReference)
     private readonly referenceRepository: Repository<PaymentReference>,
+    @InjectRepository(ReferenceBatch)
+    private readonly batchRepository: Repository<ReferenceBatch>,
   ) {}
 
   /**
@@ -403,7 +407,7 @@ export class ReferenceService {
   /**
    * Convert entity to response DTO
    */
-  private toResponseDto(reference: PaymentReference): any {
+  toResponseDto(reference: PaymentReference): any {
     return {
       id: reference.id,
       referenceNumber: reference.referenceNumber,
@@ -424,5 +428,435 @@ export class ReferenceService {
       createdAt: reference.createdAt,
       updatedAt: reference.updatedAt,
     };
+  }
+
+  // ========== SP-SPECIFIC METHODS ==========
+
+  /**
+   * Bulk generate references (asynchronous processing)
+   * Creates a batch job and processes references in background
+   */
+  async bulkGenerate(
+    serviceProviderId: string,
+    bulkDto: BulkGenerateReferenceDto,
+  ): Promise<ReferenceBatch> {
+    // Create batch record
+    const batchId = `batch-${crypto.randomUUID()}`;
+    const batch = this.batchRepository.create({
+      batchId,
+      serviceProviderId,
+      status: BatchStatus.PENDING,
+      totalRequested: bulkDto.references.length,
+      successCount: 0,
+      failureCount: 0,
+      processingCount: 0,
+      estimatedCompletionTime: new Date(
+        Date.now() + bulkDto.references.length * 100, // ~100ms per reference
+      ),
+      metadata: {
+        defaultExpiryDays: bulkDto.defaultExpiryDays,
+        notifyCustomers: bulkDto.notifyCustomers,
+      },
+    });
+
+    const savedBatch = await this.batchRepository.save(batch);
+
+    // Process references asynchronously (in production, use a queue like Bull/BullMQ)
+    this.processBatchAsync(savedBatch.id, serviceProviderId, bulkDto).catch((error) => {
+      console.error(`Error processing batch ${batchId}:`, error);
+    });
+
+    return savedBatch;
+  }
+
+  /**
+   * Process batch asynchronously (would use queue in production)
+   */
+  private async processBatchAsync(
+    batchId: string,
+    serviceProviderId: string,
+    bulkDto: BulkGenerateReferenceDto,
+  ): Promise<void> {
+    // Update batch status to PROCESSING
+    await this.batchRepository.update(batchId, {
+      status: BatchStatus.PROCESSING,
+      startedAt: new Date(),
+    });
+
+    let successCount = 0;
+    let failureCount = 0;
+    const results = [];
+
+    // Process each reference
+    for (const refDto of bulkDto.references) {
+      try {
+        const reference = await this.create({
+          ...refDto,
+          serviceProviderId,
+          expiresAt: refDto.expiresAt || this.calculateExpiry(bulkDto.defaultExpiryDays),
+        });
+
+        results.push({
+          status: 'SUCCESS',
+          referenceNumber: reference.referenceNumber,
+          customerName: reference.customerName,
+          customerPhone: reference.customerPhone,
+          amount: reference.amount,
+        });
+        successCount++;
+      } catch (error) {
+        results.push({
+          status: 'FAILED',
+          customerName: refDto.customerName,
+          error: error.message,
+        });
+        failureCount++;
+      }
+    }
+
+    // Save results to file (in production, save to S3/MinIO)
+    const resultFileUrl = await this.saveResultsToFile(batchId, results);
+
+    // Update batch with final status
+    const finalStatus =
+      failureCount === 0
+        ? BatchStatus.COMPLETED
+        : successCount === 0
+        ? BatchStatus.FAILED
+        : BatchStatus.PARTIAL;
+
+    await this.batchRepository.update(batchId, {
+      status: finalStatus,
+      successCount,
+      failureCount,
+      processingCount: 0,
+      completedAt: new Date(),
+      resultFileUrl,
+    });
+
+    // Send webhook notification (in production)
+    // await this.sendWebhookNotification(serviceProviderId, batchId);
+  }
+
+  /**
+   * Get batch status
+   */
+  async getBatchStatus(
+    batchId: string,
+    serviceProviderId: string,
+  ): Promise<ReferenceBatch | null> {
+    const batch = await this.batchRepository.findOne({
+      where: { batchId, serviceProviderId },
+    });
+
+    return batch;
+  }
+
+  /**
+   * Download bulk results
+   */
+  async downloadBulkResults(
+    batchId: string,
+    serviceProviderId: string,
+    format: 'csv' | 'json',
+  ): Promise<any> {
+    const batch = await this.getBatchStatus(batchId, serviceProviderId);
+
+    if (!batch) {
+      throw new NotFoundException('Batch not found');
+    }
+
+    if (!batch.isComplete()) {
+      throw new BadRequestException('Batch processing is not yet complete');
+    }
+
+    // In production, read from S3/MinIO
+    // For now, return mock data
+    if (format === 'json') {
+      return {
+        batchId: batch.batchId,
+        results: [], // Would fetch from file storage
+      };
+    } else {
+      // Return CSV content
+      return 'Reference Number,Customer Name,Status\n'; // Would generate from file
+    }
+  }
+
+  /**
+   * Find reference by number with SP validation
+   */
+  async findByReferenceNumber(
+    referenceNumber: string,
+    serviceProviderId?: string,
+  ): Promise<PaymentReference | null> {
+    const where: FindOptionsWhere<PaymentReference> = { referenceNumber };
+    if (serviceProviderId) {
+      where.serviceProviderId = serviceProviderId;
+    }
+
+    const reference = await this.referenceRepository.findOne({
+      where,
+      relations: ['serviceProvider'],
+    });
+
+    return reference;
+  }
+
+  /**
+   * Find all references for a service provider
+   */
+  async findAllForSp(
+    serviceProviderId: string,
+    query: QueryReferenceDto,
+  ): Promise<{ items: PaymentReference[]; total: number }> {
+    const { page = 1, limit = 20, status, search } = query;
+
+    const queryBuilder = this.referenceRepository
+      .createQueryBuilder('ref')
+      .leftJoinAndSelect('ref.serviceProvider', 'sp')
+      .where('ref.serviceProviderId = :serviceProviderId', { serviceProviderId });
+
+    if (status) {
+      queryBuilder.andWhere('ref.status = :status', { status });
+    }
+
+    if (search) {
+      queryBuilder.andWhere(
+        '(ref.customerName ILIKE :search OR ref.customerPhone ILIKE :search OR ref.referenceNumber ILIKE :search)',
+        { search: `%${search}%` },
+      );
+    }
+
+    const skip = (page - 1) * limit;
+    queryBuilder.skip(skip).take(limit).orderBy('ref.createdAt', 'DESC');
+
+    const [items, total] = await queryBuilder.getManyAndCount();
+
+    return { items, total };
+  }
+
+  /**
+   * Cancel reference with SP validation
+   */
+  async cancel(
+    referenceNumber: string,
+    serviceProviderId: string,
+    reason?: string,
+  ): Promise<PaymentReference> {
+    const reference = await this.findByReferenceNumber(referenceNumber, serviceProviderId);
+
+    if (!reference) {
+      throw new NotFoundException('Reference not found');
+    }
+
+    if (reference.status === ReferenceStatus.USED) {
+      throw new BadRequestException('Cannot cancel a used reference');
+    }
+
+    reference.status = ReferenceStatus.CANCELLED;
+    if (reason) {
+      reference.metadata = {
+        ...reference.metadata,
+        cancelReason: reason,
+        cancelledAt: new Date().toISOString(),
+      };
+    }
+
+    return await this.referenceRepository.save(reference);
+  }
+
+  /**
+   * Validate reference with SP validation
+   */
+  async validate(referenceNumber: string, serviceProviderId?: string) {
+    // Format check
+    if (!this.validateReferenceFormat(referenceNumber)) {
+      return {
+        isValid: false,
+        referenceNumber,
+        status: null,
+        reason: 'Invalid reference format',
+        validationChecks: {
+          formatValid: false,
+          checksumValid: false,
+          notExpired: false,
+          notUsed: false,
+          notCancelled: false,
+        },
+      };
+    }
+
+    // Database lookup
+    const reference = await this.findByReferenceNumber(referenceNumber, serviceProviderId);
+
+    if (!reference) {
+      return {
+        isValid: false,
+        referenceNumber,
+        status: null,
+        reason: 'Reference not found',
+        validationChecks: {
+          formatValid: true,
+          checksumValid: true,
+          notExpired: false,
+          notUsed: false,
+          notCancelled: false,
+        },
+      };
+    }
+
+    // Update validation tracking
+    reference.validationAttempts += 1;
+    reference.lastValidatedAt = new Date();
+    await this.referenceRepository.save(reference);
+
+    const isExpired = reference.isExpired();
+    const isUsed = reference.status === ReferenceStatus.USED;
+    const isCancelled = reference.status === ReferenceStatus.CANCELLED;
+
+    const isValid = !isExpired && !isUsed && !isCancelled;
+
+    let reason = 'Valid reference';
+    if (isUsed) reason = 'Reference already used';
+    else if (isCancelled) reason = 'Reference has been cancelled';
+    else if (isExpired) reason = 'Reference has expired';
+
+    const daysUntilExpiry = reference.expiresAt
+      ? Math.ceil((reference.expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+      : null;
+
+    return {
+      isValid,
+      referenceNumber,
+      status: reference.status,
+      expiresAt: reference.expiresAt,
+      daysUntilExpiry,
+      reason,
+      validationChecks: {
+        formatValid: true,
+        checksumValid: true,
+        notExpired: !isExpired,
+        notUsed: !isUsed,
+        notCancelled: !isCancelled,
+      },
+      ...(isUsed && {
+        usedAt: reference.usedAt,
+        transactionId: reference.transactionId,
+      }),
+    };
+  }
+
+  /**
+   * Extend reference expiry
+   */
+  async extendExpiry(
+    referenceNumber: string,
+    serviceProviderId: string,
+    additionalDays: number,
+  ): Promise<PaymentReference> {
+    const reference = await this.findByReferenceNumber(referenceNumber, serviceProviderId);
+
+    if (!reference) {
+      throw new NotFoundException('Reference not found');
+    }
+
+    if (reference.status !== ReferenceStatus.ACTIVE) {
+      throw new BadRequestException('Can only extend active references');
+    }
+
+    const currentExpiry = reference.expiresAt || new Date();
+    reference.expiresAt = new Date(
+      currentExpiry.getTime() + additionalDays * 24 * 60 * 60 * 1000,
+    );
+
+    return await this.referenceRepository.save(reference);
+  }
+
+  /**
+   * Get statistics with date range
+   */
+  async getStatistics(
+    serviceProviderId: string,
+    startDate?: Date,
+    endDate?: Date,
+  ) {
+    const where: FindOptionsWhere<PaymentReference> = { serviceProviderId };
+
+    if (startDate && endDate) {
+      where.createdAt = Between(startDate, endDate);
+    }
+
+    const [total, active, used, expired, cancelled] = await Promise.all([
+      this.referenceRepository.count({ where }),
+      this.referenceRepository.count({ where: { ...where, status: ReferenceStatus.ACTIVE } }),
+      this.referenceRepository.count({ where: { ...where, status: ReferenceStatus.USED } }),
+      this.referenceRepository.count({ where: { ...where, status: ReferenceStatus.EXPIRED } }),
+      this.referenceRepository.count({ where: { ...where, status: ReferenceStatus.CANCELLED } }),
+    ]);
+
+    // Get amount statistics
+    const amountQuery = await this.referenceRepository
+      .createQueryBuilder('ref')
+      .select('SUM(ref.amount)', 'total')
+      .addSelect(
+        'SUM(CASE WHEN ref.status = :used THEN ref.amount ELSE 0 END)',
+        'collected',
+      )
+      .addSelect(
+        'SUM(CASE WHEN ref.status = :active THEN ref.amount ELSE 0 END)',
+        'pending',
+      )
+      .where('ref.serviceProviderId = :serviceProviderId', { serviceProviderId })
+      .setParameter('used', ReferenceStatus.USED)
+      .setParameter('active', ReferenceStatus.ACTIVE)
+      .getRawOne();
+
+    const period = {
+      startDate: startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+      endDate: endDate || new Date(),
+    };
+
+    return {
+      period,
+      summary: {
+        totalGenerated: total,
+        active,
+        used,
+        expired,
+        cancelled,
+      },
+      amounts: {
+        totalAmount: parseFloat(amountQuery.total) || 0,
+        collectedAmount: parseFloat(amountQuery.collected) || 0,
+        pendingAmount: parseFloat(amountQuery.pending) || 0,
+        expiredAmount: 0, // Can be calculated if needed
+        currency: 'TZS',
+      },
+      trends: {
+        generatedToday: 0, // Would need additional query
+        collectedToday: 0, // Would need additional query
+        averagePerDay: total / 30, // Simplified calculation
+        collectionRate: total > 0 ? ((used / total) * 100).toFixed(2) : 0,
+      },
+    };
+  }
+
+  // ========== HELPER METHODS ==========
+
+  /**
+   * Calculate expiry date
+   */
+  private calculateExpiry(days: number = 30): Date {
+    return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+  }
+
+  /**
+   * Save results to file (mock implementation)
+   * In production, save to S3/MinIO
+   */
+  private async saveResultsToFile(batchId: string, results: any[]): Promise<string> {
+    // Mock URL - in production, upload to file storage
+    return `https://storage.ucg.mhb.co.tz/batches/${batchId}/results.json`;
   }
 }
