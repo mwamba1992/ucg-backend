@@ -235,7 +235,7 @@ export class ReferenceService {
   /**
    * Validate a reference
    */
-  async validate(referenceNumber: string) {
+  async validate(referenceNumber: string, serviceProviderId: any) {
     // First check format
     if (!this.validateReferenceFormat(referenceNumber)) {
       return {
@@ -329,7 +329,7 @@ export class ReferenceService {
   /**
    * Cancel a reference
    */
-  async cancel(id: string): Promise<PaymentReference> {
+  async cancel(id: string, serviceProviderId: any, reason: string): Promise<PaymentReference> {
     const reference = await this.findOne(id);
 
     if (reference.status === ReferenceStatus.USED) {
@@ -382,7 +382,7 @@ export class ReferenceService {
   /**
    * Get statistics
    */
-  async getStatistics(serviceProviderId?: string) {
+  async getStatistics(serviceProviderId?: string, p0?: Date, p1?: Date) {
     const where: FindOptionsWhere<PaymentReference> = serviceProviderId
       ? { serviceProviderId }
       : {};
