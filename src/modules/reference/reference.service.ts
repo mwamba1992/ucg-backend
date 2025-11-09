@@ -217,17 +217,23 @@ export class ReferenceService {
   }
 
   /**
-   * Get reference by reference number
+   * Get reference by reference number (with optional SP filtering for security)
    */
-  async findByReferenceNumber(referenceNumber: string, serviceProviderId: string): Promise<PaymentReference> {
+  async findByReferenceNumber(
+    referenceNumber: string,
+    serviceProviderId?: string,
+  ): Promise<PaymentReference | null> {
+    const where: FindOptionsWhere<PaymentReference> = { referenceNumber };
+
+    // Filter by SP if provided (for security)
+    if (serviceProviderId) {
+      where.serviceProviderId = serviceProviderId;
+    }
+
     const reference = await this.referenceRepository.findOne({
-      where: { referenceNumber },
+      where,
       relations: ['serviceProvider'],
     });
-
-    if (!reference) {
-      throw new NotFoundException(`Payment reference ${referenceNumber} not found`);
-    }
 
     return reference;
   }
@@ -235,27 +241,40 @@ export class ReferenceService {
   /**
    * Validate a reference
    */
-  async validate(referenceNumber: string, serviceProviderId: any) {
+  async validate(referenceNumber: string, serviceProviderId?: string) {
     // First check format
     if (!this.validateReferenceFormat(referenceNumber)) {
       return {
         isValid: false,
         referenceNumber,
+        status: null,
         reason: 'Invalid reference format',
+        validationChecks: {
+          formatValid: false,
+          checksumValid: false,
+          notExpired: false,
+          notUsed: false,
+          notCancelled: false,
+        },
       };
     }
 
     // Find reference in database
-    const reference = await this.referenceRepository.findOne({
-      where: { referenceNumber },
-      relations: ['serviceProvider'],
-    });
+    const reference = await this.findByReferenceNumber(referenceNumber, serviceProviderId);
 
     if (!reference) {
       return {
         isValid: false,
         referenceNumber,
+        status: null,
         reason: 'Reference not found',
+        validationChecks: {
+          formatValid: true,
+          checksumValid: true,
+          notExpired: false,
+          notUsed: false,
+          notCancelled: false,
+        },
       };
     }
 
@@ -264,45 +283,45 @@ export class ReferenceService {
     reference.lastValidatedAt = new Date();
     await this.referenceRepository.save(reference);
 
-    // Check if already used
-    if (reference.status === ReferenceStatus.USED) {
-      return {
-        isValid: false,
-        referenceNumber,
-        reason: 'Reference already used',
-        reference: this.toResponseDto(reference),
-      };
-    }
+    const isExpired = reference.isExpired();
+    const isUsed = reference.status === ReferenceStatus.USED;
+    const isCancelled = reference.status === ReferenceStatus.CANCELLED;
 
-    // Check if cancelled
-    if (reference.status === ReferenceStatus.CANCELLED) {
-      return {
-        isValid: false,
-        referenceNumber,
-        reason: 'Reference has been cancelled',
-        reference: this.toResponseDto(reference),
-      };
-    }
+    const isValid = !isExpired && !isUsed && !isCancelled;
 
-    // Check if expired
-    if (reference.isExpired()) {
-      // Auto-update status to expired
+    let reason = 'Valid reference';
+    if (isUsed) reason = 'Reference already used';
+    else if (isCancelled) reason = 'Reference has been cancelled';
+    else if (isExpired) reason = 'Reference has expired';
+
+    // Auto-expire if needed
+    if (isExpired && reference.status === ReferenceStatus.ACTIVE) {
       reference.status = ReferenceStatus.EXPIRED;
       await this.referenceRepository.save(reference);
-
-      return {
-        isValid: false,
-        referenceNumber,
-        reason: 'Reference has expired',
-        reference: this.toResponseDto(reference),
-      };
     }
 
-    // Valid reference
+    const daysUntilExpiry = reference.expiresAt
+      ? Math.ceil((reference.expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+      : null;
+
     return {
-      isValid: true,
+      isValid,
       referenceNumber,
-      reference: this.toResponseDto(reference),
+      status: reference.status,
+      expiresAt: reference.expiresAt,
+      daysUntilExpiry,
+      reason,
+      validationChecks: {
+        formatValid: true,
+        checksumValid: true,
+        notExpired: !isExpired,
+        notUsed: !isUsed,
+        notCancelled: !isCancelled,
+      },
+      ...(isUsed && {
+        usedAt: reference.usedAt,
+        transactionId: reference.transactionId,
+      }),
     };
   }
 
@@ -327,16 +346,32 @@ export class ReferenceService {
   }
 
   /**
-   * Cancel a reference
+   * Cancel a reference (by reference number with SP validation)
    */
-  async cancel(id: string, serviceProviderId: any, reason: string): Promise<PaymentReference> {
-    const reference = await this.findOne(id);
+  async cancel(
+    referenceNumber: string,
+    serviceProviderId?: string,
+    reason?: string,
+  ): Promise<PaymentReference> {
+    const reference = await this.findByReferenceNumber(referenceNumber, serviceProviderId);
+
+    if (!reference) {
+      throw new NotFoundException('Reference not found');
+    }
 
     if (reference.status === ReferenceStatus.USED) {
       throw new BadRequestException('Cannot cancel a used reference');
     }
 
     reference.status = ReferenceStatus.CANCELLED;
+
+    if (reason) {
+      reference.metadata = {
+        ...reference.metadata,
+        cancelReason: reason,
+        cancelledAt: new Date().toISOString(),
+      };
+    }
 
     return await this.referenceRepository.save(reference);
   }
@@ -382,10 +417,20 @@ export class ReferenceService {
   /**
    * Get statistics
    */
-  async getStatistics(serviceProviderId?: string, p0?: Date, p1?: Date) {
-    const where: FindOptionsWhere<PaymentReference> = serviceProviderId
-      ? { serviceProviderId }
-      : {};
+  async getStatistics(
+    serviceProviderId?: string,
+    startDate?: Date,
+    endDate?: Date,
+  ) {
+    const where: FindOptionsWhere<PaymentReference> = {};
+
+    if (serviceProviderId) {
+      where.serviceProviderId = serviceProviderId;
+    }
+
+    if (startDate && endDate) {
+      where.createdAt = Between(startDate, endDate);
+    }
 
     const [total, active, used, expired, cancelled] = await Promise.all([
       this.referenceRepository.count({ where }),
@@ -395,12 +440,62 @@ export class ReferenceService {
       this.referenceRepository.count({ where: { ...where, status: ReferenceStatus.CANCELLED } }),
     ]);
 
+    // Get amount statistics if serviceProviderId is provided
+    let amounts = {
+      totalAmount: 0,
+      collectedAmount: 0,
+      pendingAmount: 0,
+      expiredAmount: 0,
+      currency: 'TZS',
+    };
+
+    if (serviceProviderId) {
+      const amountQuery = await this.referenceRepository
+        .createQueryBuilder('ref')
+        .select('SUM(ref.amount)', 'total')
+        .addSelect(
+          'SUM(CASE WHEN ref.status = :used THEN ref.amount ELSE 0 END)',
+          'collected',
+        )
+        .addSelect(
+          'SUM(CASE WHEN ref.status = :active THEN ref.amount ELSE 0 END)',
+          'pending',
+        )
+        .where('ref.serviceProviderId = :serviceProviderId', { serviceProviderId })
+        .setParameter('used', ReferenceStatus.USED)
+        .setParameter('active', ReferenceStatus.ACTIVE)
+        .getRawOne();
+
+      amounts = {
+        totalAmount: parseFloat(amountQuery.total) || 0,
+        collectedAmount: parseFloat(amountQuery.collected) || 0,
+        pendingAmount: parseFloat(amountQuery.pending) || 0,
+        expiredAmount: 0,
+        currency: 'TZS',
+      };
+    }
+
+    const period = {
+      startDate: startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+      endDate: endDate || new Date(),
+    };
+
     return {
-      total,
-      active,
-      used,
-      expired,
-      cancelled,
+      period,
+      summary: {
+        totalGenerated: total,
+        active,
+        used,
+        expired,
+        cancelled,
+      },
+      amounts,
+      trends: {
+        generatedToday: 0,
+        collectedToday: 0,
+        averagePerDay: total / 30,
+        collectionRate: total > 0 ? ((used / total) * 100).toFixed(2) : 0,
+      },
     };
   }
 
@@ -490,12 +585,17 @@ export class ReferenceService {
     // Process each reference
     for (const refDto of bulkDto.references) {
       try {
-        // @ts-ignore
-          const reference = await this.create({
+        const createDto: CreateReferenceDto = {
           ...refDto,
           serviceProviderId,
-          expiresAt: refDto.expiresAt || this.calculateExpiry(bulkDto.defaultExpiryDays),
-        });
+        };
+
+        // Set expiry if not provided
+        if (!createDto.expiresAt && bulkDto.defaultExpiryDays) {
+          createDto.expiresAt = this.calculateExpiry(bulkDto.defaultExpiryDays);
+        }
+
+        const reference = await this.create(createDto);
 
         results.push({
           status: 'SUCCESS',
@@ -584,9 +684,6 @@ export class ReferenceService {
     }
   }
 
-
-
-
   /**
    * Find all references for a service provider
    */
@@ -620,9 +717,6 @@ export class ReferenceService {
     return { items, total };
   }
 
-
-
-
   /**
    * Extend reference expiry
    */
@@ -648,8 +742,6 @@ export class ReferenceService {
 
     return await this.referenceRepository.save(reference);
   }
-
-
 
   // ========== HELPER METHODS ==========
 
