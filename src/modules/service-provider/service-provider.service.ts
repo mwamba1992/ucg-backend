@@ -5,7 +5,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, FindOptionsWhere } from 'typeorm';
+import { Repository, FindOptionsWhere, Not } from 'typeorm';
 import { ServiceProvider, OnboardingStatus } from './entities/service-provider.entity';
 import { ServiceProviderContact } from './entities/service-provider-contact.entity';
 import { ServiceProviderBankAccount } from './entities/service-provider-bank-account.entity';
@@ -13,6 +13,8 @@ import { ServiceProviderSettings } from './entities/service-provider-settings.en
 import { CreateServiceProviderDto } from './dto/create-service-provider.dto';
 import { UpdateServiceProviderDto } from './dto/update-service-provider.dto';
 import { QueryServiceProviderDto } from './dto/query-service-provider.dto';
+import { CreateBankAccountDto } from './dto/bank-account.dto';
+import { UpdateBankAccountDto } from './dto/update-bank-account.dto';
 import { WorkflowService } from '../workflow/workflow.service';
 import * as crypto from 'crypto';
 
@@ -375,5 +377,160 @@ export class ServiceProviderService {
         where: { status: OnboardingStatus.REJECTED },
       }),
     };
+  }
+
+  // ==================== Bank Account Management ====================
+
+  /**
+   * Get all bank accounts for a service provider
+   */
+  async getBankAccounts(
+    serviceProviderId: string,
+  ): Promise<ServiceProviderBankAccount[]> {
+    // Verify SP exists
+    await this.findOne(serviceProviderId);
+
+    return await this.bankAccountRepository.find({
+      where: { serviceProviderId },
+      order: { isPrimary: 'DESC', createdAt: 'ASC' },
+    });
+  }
+
+  /**
+   * Get a single bank account by ID
+   */
+  async getBankAccount(
+    serviceProviderId: string,
+    accountId: string,
+  ): Promise<ServiceProviderBankAccount> {
+    // Verify SP exists
+    await this.findOne(serviceProviderId);
+
+    const account = await this.bankAccountRepository.findOne({
+      where: { id: accountId, serviceProviderId },
+    });
+
+    if (!account) {
+      throw new NotFoundException(
+        `Bank account with ID ${accountId} not found for this service provider`,
+      );
+    }
+
+    return account;
+  }
+
+  /**
+   * Add a new bank account to a service provider
+   */
+  async addBankAccount(
+    serviceProviderId: string,
+    createDto: CreateBankAccountDto,
+  ): Promise<ServiceProviderBankAccount> {
+    // Verify SP exists
+    await this.findOne(serviceProviderId);
+
+    // If this is marked as primary, unset other primary accounts
+    if (createDto.isPrimary) {
+      await this.bankAccountRepository.update(
+        { serviceProviderId, isPrimary: true },
+        { isPrimary: false },
+      );
+    }
+
+    // Check if this is the first account, make it primary
+    const existingCount = await this.bankAccountRepository.count({
+      where: { serviceProviderId },
+    });
+
+    const account = this.bankAccountRepository.create({
+      ...createDto,
+      serviceProviderId,
+      isPrimary: createDto.isPrimary ?? existingCount === 0,
+    });
+
+    return await this.bankAccountRepository.save(account);
+  }
+
+  /**
+   * Update a bank account
+   */
+  async updateBankAccount(
+    serviceProviderId: string,
+    accountId: string,
+    updateDto: UpdateBankAccountDto,
+  ): Promise<ServiceProviderBankAccount> {
+    const account = await this.getBankAccount(serviceProviderId, accountId);
+
+    // If setting as primary, unset other primary accounts
+    if (updateDto.isPrimary === true) {
+      await this.bankAccountRepository.update(
+        { serviceProviderId, isPrimary: true, id: Not(accountId) },
+        { isPrimary: false },
+      );
+    }
+
+    Object.assign(account, updateDto);
+
+    return await this.bankAccountRepository.save(account);
+  }
+
+  /**
+   * Set a bank account as primary
+   */
+  async setPrimaryBankAccount(
+    serviceProviderId: string,
+    accountId: string,
+  ): Promise<ServiceProviderBankAccount> {
+    const account = await this.getBankAccount(serviceProviderId, accountId);
+
+    // Unset all other primary accounts
+    await this.bankAccountRepository.update(
+      { serviceProviderId, isPrimary: true },
+      { isPrimary: false },
+    );
+
+    account.isPrimary = true;
+
+    return await this.bankAccountRepository.save(account);
+  }
+
+  /**
+   * Delete a bank account (soft delete - deactivate)
+   */
+  async deleteBankAccount(
+    serviceProviderId: string,
+    accountId: string,
+  ): Promise<void> {
+    const account = await this.getBankAccount(serviceProviderId, accountId);
+
+    // Prevent deletion of primary account if it's the only active one
+    if (account.isPrimary) {
+      const activeCount = await this.bankAccountRepository.count({
+        where: { serviceProviderId, isActive: true },
+      });
+
+      if (activeCount === 1) {
+        throw new BadRequestException(
+          'Cannot delete the only active bank account. Add another account first.',
+        );
+      }
+
+      // If deleting primary, set another active account as primary
+      const newPrimary = await this.bankAccountRepository.findOne({
+        where: {
+          serviceProviderId,
+          isActive: true,
+          id: Not(accountId),
+        },
+      });
+
+      if (newPrimary) {
+        newPrimary.isPrimary = true;
+        await this.bankAccountRepository.save(newPrimary);
+      }
+    }
+
+    account.isActive = false;
+    await this.bankAccountRepository.save(account);
   }
 }

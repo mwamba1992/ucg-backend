@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, FindOptionsWhere, LessThan, Between } from 'typeorm';
-import { PaymentReference, ReferenceStatus } from './entities/payment-reference.entity';
+import { PaymentReference, ReferenceStatus, PaymentOption } from './entities/payment-reference.entity';
 import { ReferenceBatch, BatchStatus } from './entities/reference-batch.entity';
 import { CreateReferenceDto } from './dto/create-reference.dto';
 import { UpdateReferenceDto } from './dto/update-reference.dto';
@@ -99,6 +99,7 @@ export class ReferenceService {
       referenceNumber,
       expiresAt,
       currency: createDto.currency || 'TZS',
+      paymentOption: createDto.paymentOption || PaymentOption.COMPLETE,
       status: ReferenceStatus.ACTIVE,
     });
 
@@ -513,6 +514,11 @@ export class ReferenceService {
       amount: reference.amount,
       description: reference.description,
       currency: reference.currency,
+      paymentOption: reference.paymentOption,
+      totalPaid: reference.totalPaid,
+      remainingAmount: reference.getRemainingAmount(),
+      installmentCount: reference.installmentCount,
+      isFullyPaid: reference.isFullyPaid(),
       expiresAt: reference.expiresAt,
       status: reference.status,
       metadata: reference.metadata,

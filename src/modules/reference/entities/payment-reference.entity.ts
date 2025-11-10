@@ -17,6 +17,14 @@ export enum ReferenceStatus {
   CANCELLED = 'CANCELLED',
 }
 
+export enum PaymentOption {
+  COMPLETE = 'COMPLETE',
+  PARTIAL = 'PARTIAL',
+  PRECISE = 'PRECISE',
+  LIMITED = 'LIMITED',
+  PERPETUAL = 'PERPETUAL',
+}
+
 @Entity('payment_references')
 @Index(['referenceNumber'], { unique: true })
 @Index(['serviceProviderId', 'status'])
@@ -45,6 +53,20 @@ export class PaymentReference {
 
   @Column({ type: 'varchar', length: 10, default: 'TZS' })
   currency: string;
+
+  @Column({
+    type: 'enum',
+    enum: PaymentOption,
+    default: PaymentOption.COMPLETE,
+  })
+  paymentOption: PaymentOption;
+
+  // Track payments for installment options
+  @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
+  totalPaid: number;
+
+  @Column({ type: 'int', default: 0 })
+  installmentCount: number;
 
   @Column({ type: 'timestamp', nullable: true })
   expiresAt: Date;
@@ -103,5 +125,114 @@ export class PaymentReference {
       return false;
     }
     return new Date() > this.expiresAt;
+  }
+
+  // Helper method to check if fully paid
+  isFullyPaid(): boolean {
+    return Number(this.totalPaid) >= Number(this.amount);
+  }
+
+  // Helper method to get remaining amount
+  getRemainingAmount(): number {
+    return Math.max(0, Number(this.amount) - Number(this.totalPaid));
+  }
+
+  // Helper method to check if payment amount is valid for this payment option
+  canAcceptPayment(paymentAmount: number): {
+    allowed: boolean;
+    reason?: string;
+  } {
+    const amount = Number(paymentAmount);
+    const invoiceAmount = Number(this.amount);
+    const totalPaid = Number(this.totalPaid);
+    const remaining = this.getRemainingAmount();
+
+    switch (this.paymentOption) {
+      case PaymentOption.COMPLETE:
+        // Single installment >= invoice amount
+        if (this.installmentCount === 0) {
+          if (amount >= invoiceAmount) {
+            return { allowed: true };
+          }
+          return {
+            allowed: false,
+            reason: `COMPLETE option requires payment >= ${invoiceAmount}`,
+          };
+        }
+        return {
+          allowed: false,
+          reason: 'COMPLETE option allows only one payment',
+        };
+
+      case PaymentOption.PARTIAL:
+        // Single >= invoice OR multiple < invoice with last >= remaining
+        if (this.installmentCount === 0) {
+          // First payment
+          return { allowed: true }; // Any amount accepted
+        } else {
+          // Subsequent payments
+          if (amount >= remaining) {
+            return { allowed: true }; // Final payment
+          }
+          return {
+            allowed: false,
+            reason: `PARTIAL option requires final payment >= ${remaining}`,
+          };
+        }
+
+      case PaymentOption.PRECISE:
+        // Single installment exactly = invoice amount
+        if (this.installmentCount === 0) {
+          if (amount === invoiceAmount) {
+            return { allowed: true };
+          }
+          return {
+            allowed: false,
+            reason: `PRECISE option requires payment exactly = ${invoiceAmount}`,
+          };
+        }
+        return {
+          allowed: false,
+          reason: 'PRECISE option allows only one payment',
+        };
+
+      case PaymentOption.LIMITED:
+        // Single = invoice OR multiple < invoice with last = remaining
+        if (this.installmentCount === 0) {
+          // First payment
+          if (amount === invoiceAmount) {
+            return { allowed: true }; // Full payment
+          }
+          if (amount < invoiceAmount) {
+            return { allowed: true }; // Partial payment allowed
+          }
+          return {
+            allowed: false,
+            reason: `LIMITED option requires payment <= ${invoiceAmount}`,
+          };
+        } else {
+          // Subsequent payments
+          if (amount === remaining) {
+            return { allowed: true }; // Final payment must be exact
+          }
+          if (amount < remaining) {
+            return { allowed: true }; // More installments allowed
+          }
+          return {
+            allowed: false,
+            reason: `LIMITED option requires payment <= ${remaining}`,
+          };
+        }
+
+      case PaymentOption.PERPETUAL:
+        // Any number of installments with any amount
+        return { allowed: true };
+
+      default:
+        return {
+          allowed: false,
+          reason: 'Unknown payment option',
+        };
+    }
   }
 }

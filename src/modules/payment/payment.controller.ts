@@ -49,4 +49,18 @@ export class PaymentController {
 
     return payments;
   }
+
+  @Get(':referenceNumber/summary')
+  @ApiOperation({
+    summary: 'Get payment summary including installments and remaining amount',
+  })
+  @ApiParam({ name: 'referenceNumber', description: 'Reference number' })
+  @ApiResponse({
+    status: 200,
+    description: 'Payment summary with installment details',
+  })
+  @ApiResponse({ status: 400, description: 'Invalid reference number' })
+  async getPaymentSummary(@Param('referenceNumber') referenceNumber: string) {
+    return await this.paymentService.getPaymentSummary(referenceNumber);
+  }
 }

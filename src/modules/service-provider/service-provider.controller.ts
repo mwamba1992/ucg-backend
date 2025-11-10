@@ -22,6 +22,8 @@ import { CreateServiceProviderDto } from './dto/create-service-provider.dto';
 import { UpdateServiceProviderDto } from './dto/update-service-provider.dto';
 import { QueryServiceProviderDto } from './dto/query-service-provider.dto';
 import { ServiceProviderResponseDto } from './dto/service-provider-response.dto';
+import { CreateBankAccountDto } from './dto/bank-account.dto';
+import { UpdateBankAccountDto } from './dto/update-bank-account.dto';
 
 @ApiTags('Service Providers')
 @Controller('service-providers')
@@ -161,5 +163,111 @@ export class ServiceProviderController {
   @ApiResponse({ status: 404, description: 'Service provider not found' })
   async remove(@Param('id') id: string) {
     await this.serviceProviderService.remove(id);
+  }
+
+  // ==================== Bank Account Endpoints ====================
+
+  @Get(':id/bank-accounts')
+  @ApiOperation({ summary: 'Get all bank accounts for a service provider' })
+  @ApiParam({ name: 'id', description: 'Service provider UUID' })
+  @ApiResponse({
+    status: 200,
+    description: 'List of bank accounts',
+  })
+  @ApiResponse({ status: 404, description: 'Service provider not found' })
+  async getBankAccounts(@Param('id') id: string) {
+    return await this.serviceProviderService.getBankAccounts(id);
+  }
+
+  @Get(':id/bank-accounts/:accountId')
+  @ApiOperation({ summary: 'Get a specific bank account' })
+  @ApiParam({ name: 'id', description: 'Service provider UUID' })
+  @ApiParam({ name: 'accountId', description: 'Bank account UUID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Bank account details',
+  })
+  @ApiResponse({ status: 404, description: 'Bank account not found' })
+  async getBankAccount(
+    @Param('id') id: string,
+    @Param('accountId') accountId: string,
+  ) {
+    return await this.serviceProviderService.getBankAccount(id, accountId);
+  }
+
+  @Post(':id/bank-accounts')
+  @ApiOperation({ summary: 'Add a new bank account to a service provider' })
+  @ApiParam({ name: 'id', description: 'Service provider UUID' })
+  @ApiResponse({
+    status: 201,
+    description: 'Bank account added successfully',
+  })
+  @ApiResponse({ status: 404, description: 'Service provider not found' })
+  async addBankAccount(
+    @Param('id') id: string,
+    @Body() createDto: CreateBankAccountDto,
+  ) {
+    return await this.serviceProviderService.addBankAccount(id, createDto);
+  }
+
+  @Patch(':id/bank-accounts/:accountId')
+  @ApiOperation({ summary: 'Update a bank account' })
+  @ApiParam({ name: 'id', description: 'Service provider UUID' })
+  @ApiParam({ name: 'accountId', description: 'Bank account UUID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Bank account updated successfully',
+  })
+  @ApiResponse({ status: 404, description: 'Bank account not found' })
+  async updateBankAccount(
+    @Param('id') id: string,
+    @Param('accountId') accountId: string,
+    @Body() updateDto: UpdateBankAccountDto,
+  ) {
+    return await this.serviceProviderService.updateBankAccount(
+      id,
+      accountId,
+      updateDto,
+    );
+  }
+
+  @Post(':id/bank-accounts/:accountId/set-primary')
+  @ApiOperation({ summary: 'Set a bank account as primary' })
+  @ApiParam({ name: 'id', description: 'Service provider UUID' })
+  @ApiParam({ name: 'accountId', description: 'Bank account UUID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Bank account set as primary',
+  })
+  @ApiResponse({ status: 404, description: 'Bank account not found' })
+  async setPrimaryBankAccount(
+    @Param('id') id: string,
+    @Param('accountId') accountId: string,
+  ) {
+    return await this.serviceProviderService.setPrimaryBankAccount(
+      id,
+      accountId,
+    );
+  }
+
+  @Delete(':id/bank-accounts/:accountId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Delete (deactivate) a bank account' })
+  @ApiParam({ name: 'id', description: 'Service provider UUID' })
+  @ApiParam({ name: 'accountId', description: 'Bank account UUID' })
+  @ApiResponse({
+    status: 204,
+    description: 'Bank account deleted successfully',
+  })
+  @ApiResponse({ status: 404, description: 'Bank account not found' })
+  @ApiResponse({
+    status: 400,
+    description: 'Cannot delete the only active bank account',
+  })
+  async deleteBankAccount(
+    @Param('id') id: string,
+    @Param('accountId') accountId: string,
+  ) {
+    await this.serviceProviderService.deleteBankAccount(id, accountId);
   }
 }

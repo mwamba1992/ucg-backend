@@ -9,7 +9,9 @@ import {
   MaxLength,
   IsDateString,
   IsObject,
+  IsEnum,
 } from 'class-validator';
+import { PaymentOption } from '../entities/payment-reference.entity';
 
 export class CreateReferenceDto {
   @ApiProperty({
@@ -64,6 +66,16 @@ export class CreateReferenceDto {
   @IsString()
   @MaxLength(10)
   currency?: string;
+
+  @ApiPropertyOptional({
+    description: 'Payment option defining how payment should be received',
+    enum: PaymentOption,
+    default: PaymentOption.COMPLETE,
+    example: PaymentOption.COMPLETE,
+  })
+  @IsOptional()
+  @IsEnum(PaymentOption)
+  paymentOption?: PaymentOption;
 
   @ApiPropertyOptional({
     description: 'Reference expiry date (ISO 8601)',
