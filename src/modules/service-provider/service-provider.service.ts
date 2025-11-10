@@ -13,6 +13,7 @@ import { ServiceProviderSettings } from './entities/service-provider-settings.en
 import { CreateServiceProviderDto } from './dto/create-service-provider.dto';
 import { UpdateServiceProviderDto } from './dto/update-service-provider.dto';
 import { QueryServiceProviderDto } from './dto/query-service-provider.dto';
+import { WorkflowService } from '../workflow/workflow.service';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -26,6 +27,7 @@ export class ServiceProviderService {
     private readonly bankAccountRepository: Repository<ServiceProviderBankAccount>,
     @InjectRepository(ServiceProviderSettings)
     private readonly settingsRepository: Repository<ServiceProviderSettings>,
+    private readonly workflowService: WorkflowService,
   ) {}
 
   /**
@@ -116,6 +118,24 @@ export class ServiceProviderService {
       serviceProviderId: savedSp.id,
     });
     await this.settingsRepository.save(settings);
+
+    // Start onboarding workflow
+    try {
+      await this.workflowService.startWorkflow({
+        entityType: 'SERVICE_PROVIDER',
+        entityId: savedSp.id,
+        workflowName: 'Service Provider Onboarding',
+        metadata: {
+          businessType: savedSp.businessType,
+          businessName: savedSp.businessName,
+          region: savedSp.region,
+        },
+      });
+    } catch (error) {
+      // Log warning but don't fail the creation
+      // Workflow can be started manually later if needed
+      console.warn(`Failed to start workflow for SP ${savedSp.id}:`, error.message);
+    }
 
     // Reload with relations
     return await this.findOne(savedSp.id);

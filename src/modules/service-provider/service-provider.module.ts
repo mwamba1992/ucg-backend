@@ -6,6 +6,7 @@ import { ServiceProvider } from './entities/service-provider.entity';
 import { ServiceProviderContact } from './entities/service-provider-contact.entity';
 import { ServiceProviderBankAccount } from './entities/service-provider-bank-account.entity';
 import { ServiceProviderSettings } from './entities/service-provider-settings.entity';
+import { WorkflowModule } from '../workflow/workflow.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { ServiceProviderSettings } from './entities/service-provider-settings.en
       ServiceProviderBankAccount,
       ServiceProviderSettings,
     ]),
+    WorkflowModule,
   ],
   controllers: [ServiceProviderController],
   providers: [ServiceProviderService],

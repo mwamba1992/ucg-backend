@@ -7,6 +7,7 @@ import { typeOrmConfig } from './config/typeorm.config';
 import { ServiceProviderModule } from './modules/service-provider/service-provider.module';
 import { ReferenceModule } from './modules/reference/reference.module';
 import { PaymentModule } from './modules/payment/payment.module';
+import { WorkflowModule } from './modules/workflow/workflow.module';
 
 @Module({
   imports: [
@@ -24,7 +25,8 @@ import { PaymentModule } from './modules/payment/payment.module';
     // Feature modules
     ServiceProviderModule,
     ReferenceModule,
-    PaymentModule
+    PaymentModule,
+    WorkflowModule,
   ],
   controllers: [AppController],
   providers: [AppService],
