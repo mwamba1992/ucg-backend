@@ -23,6 +23,7 @@ export const RABBITMQ_QUEUES = {
   REFERENCE_GENERATION: 'ucg.reference.generation',
   REFERENCE_BULK: 'ucg.reference.bulk',
   REFERENCE_VALIDATION: 'ucg.reference.validation',
+  REFERENCE_NOTIFICATION: 'ucg.reference.notification',
   PAYMENT_PROCESSING: 'ucg.payment.processing',
   PAYMENT_NOTIFICATION: 'ucg.payment.notification',
 } as const;
@@ -39,6 +40,7 @@ export const RABBITMQ_ROUTING_KEYS = {
   REFERENCE_CREATE: 'reference.create',
   REFERENCE_BULK: 'reference.bulk',
   REFERENCE_VALIDATE: 'reference.validate',
+  REFERENCE_NOTIFY: 'reference.notify',
   PAYMENT_PROCESS: 'payment.process',
   PAYMENT_NOTIFY: 'payment.notify',
 } as const;

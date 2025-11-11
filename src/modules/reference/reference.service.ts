@@ -16,6 +16,7 @@ import { QueryReferenceDto } from './dto/query-reference.dto';
 import { BulkCreateReferenceDto } from './dto/bulk-create-reference.dto';
 import { BulkGenerateReferenceDto } from './dto/bulk-generate-reference.dto';
 import { ReferenceProducer } from './reference.producer';
+import { ServiceProvider } from '../service-provider/entities/service-provider.entity';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -25,6 +26,8 @@ export class ReferenceService {
     private readonly referenceRepository: Repository<PaymentReference>,
     @InjectRepository(ReferenceBatch)
     private readonly batchRepository: Repository<ReferenceBatch>,
+    @InjectRepository(ServiceProvider)
+    private readonly serviceProviderRepository: Repository<ServiceProvider>,
     @Inject(forwardRef(() => ReferenceProducer))
     private readonly referenceProducer: ReferenceProducer,
   ) {}
@@ -36,10 +39,10 @@ export class ReferenceService {
    * YYYYYYY = Sequential number (7 digits)
    * ZZZ = Checksum (3 characters)
    */
-  private async generateReferenceNumber(spCode: string): Promise<string> {
+  private async generateReferenceNumber(spCode: string, serviceProviderId: string): Promise<string> {
     // Get the last reference for this SP to determine sequence
     const lastReference = await this.referenceRepository.findOne({
-      where: { serviceProviderId: spCode },
+      where: { serviceProviderId: serviceProviderId },
       order: { createdAt: 'DESC' },
     });
 
@@ -87,12 +90,20 @@ export class ReferenceService {
    * Create a new payment reference
    */
   async create(createDto: CreateReferenceDto): Promise<PaymentReference> {
-    // Get SP code from service provider (assuming it's passed or fetched)
-    // For now, extract from serviceProviderId (in real scenario, fetch from SP table)
-    const spCode = createDto.serviceProviderId.substring(0, 3).toUpperCase();
+    // Fetch the service provider to get the actual spCode
+    const serviceProvider = await this.serviceProviderRepository.findOne({
+      where: { id: createDto.serviceProviderId },
+    });
 
-    // Generate reference number
-    const referenceNumber = await this.generateReferenceNumber(spCode);
+    if (!serviceProvider) {
+      throw new NotFoundException(`Service provider with ID ${createDto.serviceProviderId} not found`);
+    }
+
+    // Generate reference number using the actual spCode and serviceProviderId
+    const referenceNumber = await this.generateReferenceNumber(
+      serviceProvider.spCode,
+      createDto.serviceProviderId
+    );
 
     // Set default expiry if not provided (30 days from now)
     const expiresAt = createDto.expiresAt

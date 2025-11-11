@@ -10,6 +10,7 @@ import {
   IsDateString,
   IsObject,
   IsEnum,
+  IsUrl,
 } from 'class-validator';
 import { PaymentOption } from '../entities/payment-reference.entity';
 
@@ -92,4 +93,12 @@ export class CreateReferenceDto {
   @IsOptional()
   @IsObject()
   metadata?: Record<string, any>;
+
+  @ApiPropertyOptional({
+    description: 'Callback URL to receive notification when reference is generated (for async requests)',
+    example: 'https://your-app.com/webhooks/reference-created',
+  })
+  @IsOptional()
+  @IsUrl()
+  callbackUrl?: string;
 }

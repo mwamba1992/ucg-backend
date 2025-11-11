@@ -16,6 +16,7 @@ export class CreateReferenceMessage {
   currency?: string;
   expiresAt?: Date;
   requestId?: string; // For tracking and idempotency
+  callbackUrl?: string; // Webhook URL for async notifications
 }
 
 /**
@@ -75,4 +76,27 @@ export class ReferenceValidationResponse {
   reference?: any;
   reason?: string;
   requestId?: string;
+}
+
+/**
+ * Message DTO for reference notification callbacks
+ */
+export class ReferenceNotificationMessage {
+  callbackUrl: string;
+  requestId?: string;
+  success: boolean;
+  referenceNumber?: string;
+  reference?: {
+    id: string;
+    referenceNumber: string;
+    customerName: string;
+    customerPhone: string;
+    amount: number;
+    currency: string;
+    status: string;
+    expiresAt: Date;
+    createdAt: Date;
+  };
+  error?: string;
+  retryCount?: number;
 }

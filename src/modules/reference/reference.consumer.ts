@@ -2,6 +2,7 @@ import { Controller, Logger } from '@nestjs/common';
 import { MessagePattern, Payload, Ctx, RmqContext } from '@nestjs/microservices';
 import { RABBITMQ_ROUTING_KEYS } from '../../config/rabbitmq.config';
 import { ReferenceService } from './reference.service';
+import { ReferenceProducer } from './reference.producer';
 import {
   CreateReferenceMessage,
   BulkReferenceMessage,
@@ -15,7 +16,10 @@ import {
 export class ReferenceConsumer {
   private readonly logger = new Logger(ReferenceConsumer.name);
 
-  constructor(private readonly referenceService: ReferenceService) {}
+  constructor(
+    private readonly referenceService: ReferenceService,
+    private readonly referenceProducer: ReferenceProducer,
+  ) {}
 
   /**
    * Handle single reference creation messages
@@ -54,6 +58,29 @@ export class ReferenceConsumer {
       this.logger.log(
         `Successfully created reference: ${reference.referenceNumber}`,
       );
+
+      // Queue callback notification if URL provided
+      if (message.callbackUrl) {
+        this.logger.log(`Queueing callback notification to: ${message.callbackUrl}`);
+        this.referenceProducer.emitNotification({
+          callbackUrl: message.callbackUrl,
+          requestId: message.requestId,
+          success: true,
+          referenceNumber: reference.referenceNumber,
+          reference: {
+            id: reference.id,
+            referenceNumber: reference.referenceNumber,
+            customerName: reference.customerName,
+            customerPhone: reference.customerPhone,
+            amount: reference.amount,
+            currency: reference.currency,
+            status: reference.status,
+            expiresAt: reference.expiresAt,
+            createdAt: reference.createdAt,
+          },
+          retryCount: 0,
+        });
+      }
 
       return {
         success: true,

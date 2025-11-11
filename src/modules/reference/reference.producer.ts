@@ -9,6 +9,7 @@ import {
   ReferenceCreatedResponse,
   BulkReferenceResponse,
   ReferenceValidationResponse,
+  ReferenceNotificationMessage,
 } from './dto/reference-queue.dto';
 
 @Injectable()
@@ -166,6 +167,28 @@ export class ReferenceProducer {
     } catch (error) {
       this.logger.error(
         `Failed to emit bulk reference generation event: ${error.message}`,
+        error.stack,
+      );
+    }
+  }
+
+  /**
+   * Emit notification event (for callbacks)
+   * Sends to notification queue for retry handling
+   */
+  emitNotification(message: ReferenceNotificationMessage): void {
+    try {
+      this.logger.log(
+        `Emitting notification event to: ${message.callbackUrl}`,
+      );
+
+      this.referenceClient.emit(
+        RABBITMQ_ROUTING_KEYS.REFERENCE_NOTIFY,
+        message,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to emit notification event: ${error.message}`,
         error.stack,
       );
     }

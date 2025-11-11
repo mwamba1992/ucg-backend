@@ -31,7 +31,7 @@ export class ReferenceController {
   constructor(private readonly referenceService: ReferenceService) {}
 
   @Post()
-  @ApiOperation({ summary: 'Generate a new payment reference' })
+  @ApiOperation({ summary: 'Generate a new payment reference (synchronous)' })
   @ApiResponse({
     status: 201,
     description: 'Payment reference successfully created',
@@ -40,6 +40,18 @@ export class ReferenceController {
   @ApiResponse({ status: 400, description: 'Bad request' })
   async create(@Body() createDto: CreateReferenceDto) {
     return await this.referenceService.create(createDto);
+  }
+
+  @Post('async')
+  @ApiOperation({ summary: 'Generate a new payment reference (asynchronous via RabbitMQ)' })
+  @ApiResponse({
+    status: 202,
+    description: 'Reference creation queued for processing',
+  })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  @HttpCode(HttpStatus.ACCEPTED)
+  async createAsync(@Body() createDto: CreateReferenceDto) {
+    return await this.referenceService.createAsync(createDto, true);
   }
 
   @Post('bulk')

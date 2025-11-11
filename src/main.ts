@@ -1,10 +1,44 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { Transport, MicroserviceOptions } from '@nestjs/microservices';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // Connect RabbitMQ microservice for reference generation queue
+  app.connectMicroservice<MicroserviceOptions>({
+    transport: Transport.RMQ,
+    options: {
+      urls: [process.env.RABBITMQ_URL || 'amqp://localhost:5672'],
+      queue: 'ucg.reference.generation',
+      queueOptions: {
+        durable: true,
+      },
+      noAck: false,
+      prefetchCount: 10,
+    },
+  });
+
+  // Connect RabbitMQ microservice for notification queue
+  app.connectMicroservice<MicroserviceOptions>({
+    transport: Transport.RMQ,
+    options: {
+      urls: [process.env.RABBITMQ_URL || 'amqp://localhost:5672'],
+      queue: 'ucg.reference.notification',
+      queueOptions: {
+        durable: true,
+        arguments: {
+          // Dead Letter Exchange - failed messages go here after max retries
+          'x-dead-letter-exchange': 'ucg.dlx',
+          'x-dead-letter-routing-key': 'reference.notification.failed',
+        },
+      },
+      noAck: false,
+      prefetchCount: 5, // Lower prefetch for callbacks
+    },
+  });
 
   // Global prefix
   const apiPrefix = process.env.API_PREFIX || 'api/v1';
@@ -88,12 +122,18 @@ async function bootstrap() {
   });
 
   const port = process.env.PORT || 3000;
+
+  // Start all microservices first
+  await app.startAllMicroservices();
+
+  // Then start HTTP server
   await app.listen(port);
 
   console.log(`
     🚀 UCG API Server is running!
     📝 API Documentation: http://localhost:${port}/api/docs
     🔗 API Endpoint: http://localhost:${port}/${apiPrefix}
+    🐰 RabbitMQ Consumers: Active
   `);
 }
 
