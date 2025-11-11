@@ -3,6 +3,8 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, FindOptionsWhere, LessThan, Between } from 'typeorm';
@@ -13,6 +15,7 @@ import { UpdateReferenceDto } from './dto/update-reference.dto';
 import { QueryReferenceDto } from './dto/query-reference.dto';
 import { BulkCreateReferenceDto } from './dto/bulk-create-reference.dto';
 import { BulkGenerateReferenceDto } from './dto/bulk-generate-reference.dto';
+import { ReferenceProducer } from './reference.producer';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -22,6 +25,8 @@ export class ReferenceService {
     private readonly referenceRepository: Repository<PaymentReference>,
     @InjectRepository(ReferenceBatch)
     private readonly batchRepository: Repository<ReferenceBatch>,
+    @Inject(forwardRef(() => ReferenceProducer))
+    private readonly referenceProducer: ReferenceProducer,
   ) {}
 
   /**
@@ -747,6 +752,106 @@ export class ReferenceService {
     );
 
     return await this.referenceRepository.save(reference);
+  }
+
+  // ========== ASYNC RABBITMQ METHODS ==========
+
+  /**
+   * Create reference asynchronously using RabbitMQ
+   * Returns immediately with request ID, actual creation happens in the background
+   */
+  async createAsync(createDto: CreateReferenceDto, useQueue: boolean = false): Promise<any> {
+    if (!useQueue) {
+      // Synchronous creation (default behavior)
+      return await this.create(createDto);
+    }
+
+    // Asynchronous creation via RabbitMQ
+    const requestId = crypto.randomUUID();
+
+    const message = {
+      ...createDto,
+      requestId,
+    };
+
+    // Queue the reference creation (fire-and-forget)
+    this.referenceProducer.emitReferenceCreated(message);
+
+    return {
+      status: 'QUEUED',
+      requestId,
+      message: 'Reference creation queued. Processing will complete shortly.',
+    };
+  }
+
+  /**
+   * Bulk create references asynchronously using RabbitMQ
+   * Returns immediately with request ID, actual creation happens in the background
+   */
+  async bulkCreateAsync(serviceProviderId: string, bulkDto: BulkGenerateReferenceDto, useQueue: boolean = true): Promise<any> {
+    if (!useQueue) {
+      // Synchronous bulk creation
+      return await this.bulkGenerate(serviceProviderId, bulkDto);
+    }
+
+    // Asynchronous creation via RabbitMQ
+    const requestId = crypto.randomUUID();
+
+    const message = {
+      serviceProviderId,
+      references: bulkDto.references.map(ref => ({
+        ...ref,
+        paymentOption: ref.paymentOption || PaymentOption.COMPLETE,
+      })),
+      requestId,
+    };
+
+    // Queue the bulk reference generation (fire-and-forget)
+    this.referenceProducer.emitBulkReferenceGeneration(message);
+
+    return {
+      status: 'QUEUED',
+      requestId,
+      totalRequested: bulkDto.references.length,
+      message: 'Bulk reference generation queued. Processing will complete shortly.',
+      estimatedCompletionTime: new Date(Date.now() + bulkDto.references.length * 100),
+    };
+  }
+
+  /**
+   * Validate reference asynchronously using RabbitMQ
+   * Useful when you need validation but don't need immediate result
+   */
+  async validateAsync(referenceNumber: string, useQueue: boolean = false): Promise<any> {
+    if (!useQueue) {
+      // Synchronous validation (default behavior)
+      return await this.validate(referenceNumber);
+    }
+
+    // Asynchronous validation via RabbitMQ
+    const requestId = crypto.randomUUID();
+
+    const message = {
+      referenceNumber,
+      requestId,
+    };
+
+    try {
+      // Queue validation and wait for response
+      const response = await this.referenceProducer.queueReferenceValidation(message);
+
+      return {
+        status: 'COMPLETED',
+        requestId,
+        validation: response,
+      };
+    } catch (error) {
+      return {
+        status: 'ERROR',
+        requestId,
+        error: error.message,
+      };
+    }
   }
 
   // ========== HELPER METHODS ==========

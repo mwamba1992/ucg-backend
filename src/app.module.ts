@@ -8,6 +8,7 @@ import { ServiceProviderModule } from './modules/service-provider/service-provid
 import { ReferenceModule } from './modules/reference/reference.module';
 import { PaymentModule } from './modules/payment/payment.module';
 import { WorkflowModule } from './modules/workflow/workflow.module';
+import { RabbitmqModule } from './modules/rabbitmq/rabbitmq.module';
 
 @Module({
   imports: [
@@ -21,6 +22,9 @@ import { WorkflowModule } from './modules/workflow/workflow.module';
     TypeOrmModule.forRootAsync({
       useFactory: typeOrmConfig,
     }),
+
+    // RabbitMQ module (Global)
+    RabbitmqModule,
 
     // Feature modules
     ServiceProviderModule,

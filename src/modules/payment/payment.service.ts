@@ -1,11 +1,13 @@
 // payment.service.ts
-import { Injectable, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, BadRequestException, Logger, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Payment, PaymentStatus } from './entities/payment.entity';
 import { ReferenceService } from '../reference/reference.service';
 import { CreatePaymentDto } from './dto/payment.dto';
 import { PaymentReference, ReferenceStatus } from '../reference/entities/payment-reference.entity';
+import { PaymentProducer } from './payment.producer';
+import * as crypto from 'crypto';
 
 @Injectable()
 export class PaymentService {
@@ -17,6 +19,8 @@ export class PaymentService {
     @InjectRepository(PaymentReference)
     private readonly referenceRepo: Repository<PaymentReference>,
     private readonly referenceService: ReferenceService,
+    @Inject(forwardRef(() => PaymentProducer))
+    private readonly paymentProducer: PaymentProducer,
   ) {}
 
   /**
@@ -135,6 +139,88 @@ export class PaymentService {
         paidAt: p.paidAt,
         status: p.status,
       })),
+    };
+  }
+
+  // ========== ASYNC RABBITMQ METHODS ==========
+
+  /**
+   * Process payment asynchronously using RabbitMQ
+   * Returns immediately with request ID, actual processing happens in the background
+   */
+  async createPaymentAsync(dto: CreatePaymentDto, useQueue: boolean = false): Promise<any> {
+    if (!useQueue) {
+      // Synchronous payment processing (default behavior)
+      return await this.createPayment(dto);
+    }
+
+    // Asynchronous payment processing via RabbitMQ
+    const requestId = crypto.randomUUID();
+
+    const message = {
+      referenceNumber: dto.referenceNumber,
+      amountPaid: dto.amountPaid,
+      paymentChannel: dto.paymentChannel || 'Bank',
+      payerName: dto.payerName,
+      payerPhone: dto.payerPhone,
+      transactionId: dto.transactionId,
+      currency: dto.currency,
+      description: dto.description,
+      requestId,
+    };
+
+    // Queue the payment processing (fire-and-forget)
+    this.paymentProducer.emitPaymentProcessing(message);
+
+    return {
+      status: 'QUEUED',
+      requestId,
+      message: 'Payment processing queued. Processing will complete shortly.',
+    };
+  }
+
+  /**
+   * Send payment notification asynchronously
+   * Useful for sending notifications without blocking payment processing
+   */
+  async sendPaymentNotificationAsync(
+    paymentId: string,
+    notificationType: 'EMAIL' | 'SMS' | 'WEBHOOK' = 'WEBHOOK',
+  ): Promise<any> {
+    const payment = await this.paymentRepo.findOne({
+      where: { id: paymentId },
+    });
+
+    if (!payment) {
+      throw new BadRequestException('Payment not found');
+    }
+
+    const reference = await this.referenceService.findByReferenceNumber(payment.referenceNumber);
+
+    if (!reference) {
+      throw new BadRequestException('Reference not found');
+    }
+
+    const requestId = crypto.randomUUID();
+
+    const message = {
+      paymentId: payment.id,
+      referenceNumber: payment.referenceNumber,
+      amountPaid: payment.amountPaid,
+      status: payment.status,
+      serviceProviderId: reference.serviceProviderId,
+      notificationType,
+      requestId,
+    };
+
+    // Queue the notification (fire-and-forget)
+    this.paymentProducer.emitPaymentNotification(message);
+
+    return {
+      status: 'QUEUED',
+      requestId,
+      notificationType,
+      message: `Payment notification (${notificationType}) queued for delivery.`,
     };
   }
 }
