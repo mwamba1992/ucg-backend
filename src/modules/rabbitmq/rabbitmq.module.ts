@@ -15,12 +15,10 @@ import { RABBITMQ_QUEUES } from '../../config/rabbitmq.config';
           options: {
             urls: [configService.get<string>('RABBITMQ_URL', 'amqp://localhost:5672')],
             queue: RABBITMQ_QUEUES.REFERENCE_GENERATION,
-            noAck: false,
             persistent: true,
             queueOptions: {
               durable: true,
             },
-            prefetchCount: 10,
           },
         }),
         inject: [ConfigService],
@@ -33,12 +31,10 @@ import { RABBITMQ_QUEUES } from '../../config/rabbitmq.config';
           options: {
             urls: [configService.get<string>('RABBITMQ_URL', 'amqp://localhost:5672')],
             queue: RABBITMQ_QUEUES.PAYMENT_PROCESSING,
-            noAck: false,
             persistent: true,
             queueOptions: {
               durable: true,
             },
-            prefetchCount: 10,
           },
         }),
         inject: [ConfigService],
