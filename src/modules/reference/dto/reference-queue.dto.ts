@@ -1,3 +1,5 @@
+import { IsString, IsBoolean, IsOptional, IsNumber, ValidateNested, IsObject } from 'class-validator';
+import { Type } from 'class-transformer';
 import { PaymentOption } from '../entities/payment-reference.entity';
 
 /**
@@ -82,10 +84,22 @@ export class ReferenceValidationResponse {
  * Message DTO for reference notification callbacks
  */
 export class ReferenceNotificationMessage {
+  @IsString()
   callbackUrl: string;
+
+  @IsOptional()
+  @IsString()
   requestId?: string;
+
+  @IsBoolean()
   success: boolean;
+
+  @IsOptional()
+  @IsString()
   referenceNumber?: string;
+
+  @IsOptional()
+  @IsObject()
   reference?: {
     id: string;
     referenceNumber: string;
@@ -97,6 +111,12 @@ export class ReferenceNotificationMessage {
     expiresAt: Date;
     createdAt: Date;
   };
+
+  @IsOptional()
+  @IsString()
   error?: string;
+
+  @IsOptional()
+  @IsNumber()
   retryCount?: number;
 }

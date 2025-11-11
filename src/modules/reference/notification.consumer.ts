@@ -87,8 +87,33 @@ export class NotificationConsumer {
           `Max retries (${this.MAX_RETRIES}) exceeded for callback to ${message.callbackUrl}. Moving to DLQ.`,
         );
 
-        // Nack without requeue - will go to Dead Letter Queue
-        channel.nack(originalMsg, false, false);
+        // Publish directly to DLX instead of relying on nack
+        const dlxExchange = 'ucg.dlx';
+        const dlxRoutingKey = 'reference.notification.failed';
+
+        try {
+          channel.publish(
+            dlxExchange,
+            dlxRoutingKey,
+            Buffer.from(JSON.stringify(message)),
+            {
+              persistent: true,
+              contentType: 'application/json',
+              headers: {
+                'x-original-queue': 'ucg.reference.notification',
+                'x-death-reason': 'max-retries-exceeded',
+                'x-retry-count': retryCount,
+                'x-failed-at': new Date().toISOString(),
+              },
+            },
+          );
+          this.logger.log(`Message published to DLQ via ${dlxExchange}`);
+        } catch (publishError) {
+          this.logger.error(`Failed to publish to DLQ: ${publishError.message}`);
+        }
+
+        // Acknowledge the message since we've handled it
+        channel.ack(originalMsg);
       }
     }
   }
