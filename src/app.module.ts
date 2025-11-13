@@ -9,6 +9,8 @@ import { ReferenceModule } from './modules/reference/reference.module';
 import { PaymentModule } from './modules/payment/payment.module';
 import { WorkflowModule } from './modules/workflow/workflow.module';
 import { RabbitmqModule } from './modules/rabbitmq/rabbitmq.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { ReconciliationModule } from './modules/reconciliation/reconciliation.module';
 
 @Module({
   imports: [
@@ -31,6 +33,8 @@ import { RabbitmqModule } from './modules/rabbitmq/rabbitmq.module';
     ReferenceModule,
     PaymentModule,
     WorkflowModule,
+    DashboardModule,
+    ReconciliationModule,
   ],
   controllers: [AppController],
   providers: [AppService],

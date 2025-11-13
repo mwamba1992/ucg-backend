@@ -15,10 +15,18 @@
    - [Bulk Reference Generation](#3-bulk-reference-generation)
    - [Check Bulk Status](#4-check-bulk-generation-status)
 2. [Payment Posting APIs](#payment-posting-apis)
-   - [Post Payment](#1-post-payment)
-   - [Get Payment Summary](#2-get-payment-summary)
-3. [Webhook Notifications](#webhook-notifications)
-4. [Error Codes](#error-codes)
+   - [Query/Validate Reference](#1-queryvalidate-reference-before-payment)
+   - [Post Payment](#2-post-payment)
+   - [Get Payment Summary](#3-get-payment-summary)
+3. [Reconciliation APIs](#reconciliation-apis)
+   - [Generate Settlement](#1-generate-settlement)
+   - [Get Settlements](#2-get-settlements)
+   - [Get Settlement Report](#3-get-settlement-report)
+   - [Query Transactions](#4-query-transactions-for-reconciliation)
+   - [Mark as Reconciled](#5-mark-settlement-as-reconciled)
+   - [Report Discrepancy](#6-report-settlement-discrepancy)
+4. [Webhook Notifications](#webhook-notifications)
+5. [Error Codes](#error-codes)
 
 ---
 
@@ -217,7 +225,109 @@ Check the progress of bulk reference generation.
 
 ## Payment Posting APIs
 
-### 1. Post Payment
+### 1. Query/Validate Reference (Before Payment)
+
+**IMPORTANT:** Always query and validate the reference before posting payment to ensure it's valid and get payment details.
+
+**Endpoint:** `GET /references/validate/{referenceNumber}`
+
+**Request:**
+```
+GET /references/validate/TES-0000001-7FB
+```
+
+**Response (200 OK) - Valid Reference:**
+```json
+{
+  "isValid": true,
+  "referenceNumber": "TES-0000001-7FB",
+  "status": "ACTIVE",
+  "expiresAt": "2025-12-13T06:16:29.855Z",
+  "daysUntilExpiry": 29,
+  "reason": "Valid reference",
+  "validationChecks": {
+    "formatValid": true,
+    "checksumValid": true,
+    "notExpired": true,
+    "notUsed": true,
+    "notCancelled": true
+  },
+  "reference": {
+    "referenceNumber": "TES-0000001-7FB",
+    "customerName": "John Doe",
+    "customerPhone": "+255712345678",
+    "amount": "150000.00",
+    "totalPaid": "0.00",
+    "remainingAmount": 150000,
+    "minPaymentAmount": "50000.00",
+    "currency": "TZS",
+    "paymentOption": "PARTIAL",
+    "status": "ACTIVE",
+    "isFullyPaid": false,
+    "installmentCount": 0,
+    "expiresAt": "2025-12-13T06:16:29.855Z"
+  }
+}
+```
+
+**Response (200 OK) - Invalid Reference (Expired):**
+```json
+{
+  "isValid": false,
+  "referenceNumber": "TES-0000001-7FB",
+  "status": "EXPIRED",
+  "expiresAt": "2025-11-12T06:16:29.855Z",
+  "daysUntilExpiry": -1,
+  "reason": "Reference has expired",
+  "validationChecks": {
+    "formatValid": true,
+    "checksumValid": true,
+    "notExpired": false,
+    "notUsed": true,
+    "notCancelled": true
+  }
+}
+```
+
+**Response (200 OK) - Invalid Reference (Already Used):**
+```json
+{
+  "isValid": false,
+  "referenceNumber": "TES-0000001-7FB",
+  "status": "USED",
+  "reason": "Reference already used",
+  "validationChecks": {
+    "formatValid": true,
+    "checksumValid": true,
+    "notExpired": true,
+    "notUsed": false,
+    "notCancelled": true
+  },
+  "usedAt": "2025-11-13T06:27:34.103Z",
+  "transactionId": "117088a1-859e-4447-ab78-c6ec867fb205"
+}
+```
+
+**Response (200 OK) - Invalid Format:**
+```json
+{
+  "isValid": false,
+  "referenceNumber": "INVALID-REF",
+  "status": null,
+  "reason": "Invalid reference format",
+  "validationChecks": {
+    "formatValid": false,
+    "checksumValid": false,
+    "notExpired": false,
+    "notUsed": false,
+    "notCancelled": false
+  }
+}
+```
+
+---
+
+### 2. Post Payment
 
 Post a payment against a reference number.
 
@@ -262,7 +372,7 @@ Post a payment against a reference number.
 
 ---
 
-### 2. Get Payment Summary
+### 3. Get Payment Summary
 
 Retrieve payment history and summary for a reference.
 
@@ -299,6 +409,426 @@ Retrieve payment history and summary for a reference.
   ]
 }
 ```
+
+---
+
+## Payment Flow Example
+
+### Typical Payment Flow for Banks/Payment Processors
+
+**Step 1: Customer provides reference number**
+- Customer enters reference: `TES-0000001-7FB`
+
+**Step 2: Validate reference before collecting payment**
+```bash
+GET /references/validate/TES-0000001-7FB
+```
+
+**Response:**
+```json
+{
+  "isValid": true,
+  "referenceNumber": "TES-0000001-7FB",
+  "reference": {
+    "customerName": "John Doe",
+    "amount": "150000.00",
+    "remainingAmount": 150000,
+    "minPaymentAmount": "50000.00",
+    "paymentOption": "PARTIAL",
+    "currency": "TZS"
+  }
+}
+```
+
+**Step 3: Display payment information to customer**
+- Show: Customer Name, Amount Due, Minimum Payment (if partial)
+- Customer confirms and enters payment amount
+
+**Step 4: Post the payment**
+```bash
+POST /payments
+{
+  "referenceNumber": "TES-0000001-7FB",
+  "payerName": "John Doe",
+  "payerPhone": "+255712345678",
+  "amountPaid": 50000,
+  "paymentChannel": "M-Pesa"
+}
+```
+
+**Response:**
+```json
+{
+  "id": "payment-uuid",
+  "status": "SUCCESS",
+  "reference": {
+    "remainingAmount": 100000,
+    "isFullyPaid": false
+  }
+}
+```
+
+**Step 5: Display receipt to customer**
+- Show: Payment success, remaining balance (if any)
+
+---
+
+## Reconciliation APIs
+
+The Reconciliation APIs enable service providers to match transactions, generate settlements, and track payment reconciliation. These APIs support daily, weekly, or monthly settlement cycles.
+
+### 1. Generate Settlement
+
+Generate a settlement report for a specific period. This creates a settlement record aggregating all successful transactions.
+
+**Endpoint:** `POST /reconciliation/settlements/generate`
+
+**Request Body:**
+```json
+{
+  "serviceProviderId": "58bfe4aa-0843-47ea-8a19-467f702aebc4",
+  "periodStart": "2025-01-01",
+  "periodEnd": "2025-01-31",
+  "period": "DAILY"
+}
+```
+
+**Request Parameters:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `serviceProviderId` | UUID | Yes | Service provider ID |
+| `periodStart` | Date | Yes | Settlement period start (ISO 8601) |
+| `periodEnd` | Date | Yes | Settlement period end (ISO 8601) |
+| `period` | Enum | Yes | DAILY, WEEKLY, MONTHLY, CUSTOM |
+
+**Response (201 Created):**
+```json
+{
+  "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "settlementNumber": "SET-20250131-00001",
+  "serviceProviderId": "58bfe4aa-0843-47ea-8a19-467f702aebc4",
+  "settlementDate": "2025-01-31",
+  "periodStart": "2025-01-01",
+  "periodEnd": "2025-01-31",
+  "period": "MONTHLY",
+  "totalTransactions": 150,
+  "successfulTransactions": 150,
+  "failedTransactions": 0,
+  "totalAmount": "15000000.00",
+  "totalFees": "150000.00",
+  "netSettlement": "14850000.00",
+  "currency": "TZS",
+  "status": "PENDING",
+  "isReconciled": false,
+  "createdAt": "2025-01-31T23:59:59Z"
+}
+```
+
+---
+
+### 2. Get Settlements
+
+Query settlements for a service provider with optional filters.
+
+**Endpoint:** `GET /reconciliation/settlements`
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `serviceProviderId` | UUID | Yes | Service provider ID |
+| `startDate` | Date | No | Filter by period start date |
+| `endDate` | Date | No | Filter by period end date |
+| `status` | Enum | No | PENDING, PROCESSING, COMPLETED, FAILED, DISPUTED |
+| `isReconciled` | Boolean | No | Filter by reconciliation status |
+
+**Example Request:**
+```
+GET /reconciliation/settlements?serviceProviderId=58bfe4aa-0843-47ea-8a19-467f702aebc4&startDate=2025-01-01&endDate=2025-01-31&status=PENDING
+```
+
+**Response (200 OK):**
+```json
+[
+  {
+    "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+    "settlementNumber": "SET-20250131-00001",
+    "settlementDate": "2025-01-31",
+    "periodStart": "2025-01-01",
+    "periodEnd": "2025-01-31",
+    "period": "MONTHLY",
+    "totalTransactions": 150,
+    "totalAmount": "15000000.00",
+    "netSettlement": "14850000.00",
+    "currency": "TZS",
+    "status": "PENDING",
+    "isReconciled": false
+  },
+  {
+    "id": "7ba85f64-8821-4562-b3fc-2c963f66bcd2",
+    "settlementNumber": "SET-20241231-00001",
+    "settlementDate": "2024-12-31",
+    "periodStart": "2024-12-01",
+    "periodEnd": "2024-12-31",
+    "totalTransactions": 200,
+    "totalAmount": "20000000.00",
+    "netSettlement": "19800000.00",
+    "status": "COMPLETED",
+    "isReconciled": true
+  }
+]
+```
+
+---
+
+### 3. Get Settlement Report
+
+Retrieve comprehensive settlement report with all transactions and summary.
+
+**Endpoint:** `GET /reconciliation/settlements/{settlementId}/report`
+
+**Path Parameters:**
+- `settlementId` - Settlement UUID
+
+**Response (200 OK):**
+```json
+{
+  "settlement": {
+    "settlementNumber": "SET-20250131-00001",
+    "period": "MONTHLY",
+    "periodStart": "2025-01-01",
+    "periodEnd": "2025-01-31",
+    "settlementDate": "2025-01-31",
+    "status": "PENDING",
+    "isReconciled": false
+  },
+  "transactions": [
+    {
+      "paymentId": "549ba531-f616-41ff-b6e8-cfccee411f72",
+      "referenceNumber": "TES-0000001-7FB",
+      "customerName": "John Doe",
+      "payerPhone": "+255712345678",
+      "amountPaid": 50000,
+      "paymentChannel": "M-Pesa",
+      "paidAt": "2025-01-15T10:30:00Z",
+      "status": "SUCCESS"
+    },
+    {
+      "paymentId": "117088a1-859e-4447-ab78-c6ec867fb205",
+      "referenceNumber": "TES-0000002-8GC",
+      "customerName": "Jane Smith",
+      "payerPhone": "+255723456789",
+      "amountPaid": 100000,
+      "paymentChannel": "Bank",
+      "paidAt": "2025-01-16T14:20:00Z",
+      "status": "SUCCESS"
+    }
+  ],
+  "summary": {
+    "totalTransactions": 150,
+    "totalAmount": 15000000,
+    "totalFees": 150000,
+    "netSettlement": 14850000,
+    "currency": "TZS",
+    "byChannel": [
+      {
+        "channel": "M-Pesa",
+        "count": 80,
+        "amount": 8000000
+      },
+      {
+        "channel": "Bank",
+        "count": 70,
+        "amount": 7000000
+      }
+    ]
+  }
+}
+```
+
+---
+
+### 4. Query Transactions for Reconciliation
+
+Get detailed transaction data for reconciliation matching.
+
+**Endpoint:** `GET /reconciliation/transactions`
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `serviceProviderId` | UUID | Yes | Service provider ID |
+| `startDate` | DateTime | Yes | Transaction start date/time (ISO 8601) |
+| `endDate` | DateTime | Yes | Transaction end date/time (ISO 8601) |
+| `status` | String | No | Filter by payment status (SUCCESS, FAILED) |
+| `paymentChannel` | String | No | Filter by payment channel |
+
+**Example Request:**
+```
+GET /reconciliation/transactions?serviceProviderId=58bfe4aa-0843-47ea-8a19-467f702aebc4&startDate=2025-01-01T00:00:00Z&endDate=2025-01-31T23:59:59Z&status=SUCCESS
+```
+
+**Response (200 OK):**
+```json
+[
+  {
+    "paymentId": "549ba531-f616-41ff-b6e8-cfccee411f72",
+    "referenceNumber": "TES-0000001-7FB",
+    "payerName": "John Doe",
+    "payerPhone": "+255712345678",
+    "amountPaid": "50000.00",
+    "currency": "TZS",
+    "paymentChannel": "M-Pesa",
+    "status": "SUCCESS",
+    "paidAt": "2025-01-15T10:30:00Z",
+    "reference": {
+      "customerName": "John Doe",
+      "amount": "150000.00"
+    }
+  },
+  {
+    "paymentId": "117088a1-859e-4447-ab78-c6ec867fb205",
+    "referenceNumber": "TES-0000002-8GC",
+    "payerName": "Jane Smith",
+    "payerPhone": "+255723456789",
+    "amountPaid": "100000.00",
+    "currency": "TZS",
+    "paymentChannel": "Bank",
+    "status": "SUCCESS",
+    "paidAt": "2025-01-16T14:20:00Z",
+    "reference": {
+      "customerName": "Jane Smith",
+      "amount": "100000.00"
+    }
+  }
+]
+```
+
+---
+
+### 5. Mark Settlement as Reconciled
+
+Confirm that a settlement has been successfully reconciled.
+
+**Endpoint:** `PATCH /reconciliation/settlements/{settlementId}/reconcile`
+
+**Path Parameters:**
+- `settlementId` - Settlement UUID
+
+**Request Body:**
+```json
+{
+  "reconciledBy": "finance@serviceprovider.com"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "settlementNumber": "SET-20250131-00001",
+  "status": "COMPLETED",
+  "isReconciled": true,
+  "reconciledAt": "2025-02-01T09:15:00Z",
+  "reconciledBy": "finance@serviceprovider.com",
+  "netSettlement": "14850000.00"
+}
+```
+
+---
+
+### 6. Report Settlement Discrepancy
+
+Report a discrepancy or dispute for a settlement.
+
+**Endpoint:** `POST /reconciliation/settlements/{settlementId}/dispute`
+
+**Path Parameters:**
+- `settlementId` - Settlement UUID
+
+**Request Body:**
+```json
+{
+  "details": "Amount mismatch: Expected 15,000,000 TZS but received 14,950,000 TZS in bank account. Missing 50,000 TZS from 2 transactions."
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "settlementNumber": "SET-20250131-00001",
+  "status": "DISPUTED",
+  "notes": "Amount mismatch: Expected 15,000,000 TZS but received 14,950,000 TZS in bank account. Missing 50,000 TZS from 2 transactions.",
+  "netSettlement": "14850000.00"
+}
+```
+
+---
+
+## Reconciliation Flow Example
+
+### Typical Reconciliation Flow for Service Providers
+
+**Step 1: Automatic Settlement Generation**
+- UCG generates daily/weekly/monthly settlements
+- Settlements created at end of period
+
+**Step 2: Service Provider Receives Notification**
+- Email/SMS notification of new settlement
+- Contains settlement number and amount
+
+**Step 3: Query Settlement Details**
+```bash
+GET /reconciliation/settlements/{settlementId}/report
+```
+
+**Step 4: Download Transaction Data**
+```bash
+GET /reconciliation/transactions?serviceProviderId=xxx&startDate=2025-01-01T00:00:00Z&endDate=2025-01-31T23:59:59Z
+```
+
+**Step 5: Match with Internal Records**
+- Compare transaction count
+- Verify total amounts
+- Match individual transactions by reference number
+
+**Step 6A: If Matched - Confirm Reconciliation**
+```bash
+PATCH /reconciliation/settlements/{settlementId}/reconcile
+{
+  "reconciledBy": "finance@serviceprovider.com"
+}
+```
+
+**Step 6B: If Mismatch - Report Discrepancy**
+```bash
+POST /reconciliation/settlements/{settlementId}/dispute
+{
+  "details": "Amount mismatch details..."
+}
+```
+
+**Step 7: Settlement Processing**
+- UCG team investigates disputed settlements
+- Resolved settlements move to COMPLETED status
+- Funds transferred to service provider account
+
+---
+
+## Settlement Number Format
+
+All settlement numbers follow this format:
+
+**Format:** `SET-YYYYMMDD-XXXXX`
+
+- **SET** = Settlement prefix
+- **YYYYMMDD** = Settlement date (ISO date format)
+- **XXXXX** = Sequential number (5 digits)
+
+**Example:** `SET-20250131-00001`
 
 ---
 
@@ -493,6 +1023,8 @@ Contact your account manager to obtain:
 
 ---
 
-**Document Version:** 1.0
+**Document Version:** 1.2
 **Last Updated:** November 13, 2025
+**Changes in v1.2:** Streamlined Reconciliation APIs - removed dashboard, focused on settlement reports
+**Changes in v1.1:** Added Reconciliation APIs section
 **Next Review:** Authentication & Security Documentation
