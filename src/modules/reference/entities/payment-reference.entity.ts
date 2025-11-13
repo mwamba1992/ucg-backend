@@ -6,9 +6,11 @@ import {
   UpdateDateColumn,
   Index,
   ManyToOne,
+  OneToMany,
   JoinColumn,
 } from 'typeorm';
 import { ServiceProvider } from '../../service-provider/entities/service-provider.entity';
+import { ReferenceLineItem } from './reference-line-item.entity';
 
 export enum ReferenceStatus {
   ACTIVE = 'ACTIVE',
@@ -45,8 +47,24 @@ export class PaymentReference {
   @Column({ length: 15 })
   customerPhone: string;
 
+  @Column({ length: 100, nullable: true })
+  customerEmail: string;
+
+  // Customer Identification
+  @Column({ length: 50, nullable: true })
+  customerId: string; // National ID, Passport, Tax ID, etc.
+
+  @Column({ length: 20, nullable: true })
+  customerIdType: string; // Type: 1=National ID, 2=Passport, 3=Driving License, etc.
+
+  @Column({ length: 100, nullable: true })
+  customerAccount: string; // Customer account number with service provider
+
   @Column({ type: 'decimal', precision: 15, scale: 2 })
   amount: number;
+
+  @Column({ type: 'decimal', precision: 15, scale: 2, nullable: true })
+  minPaymentAmount: number; // Minimum payment amount for partial payments
 
   @Column({ type: 'text', nullable: true })
   description: string;
@@ -54,12 +72,25 @@ export class PaymentReference {
   @Column({ type: 'varchar', length: 10, default: 'TZS' })
   currency: string;
 
+  @Column({ type: 'decimal', precision: 10, scale: 4, default: 1.0 })
+  exchangeRate: number; // Exchange rate for multi-currency support
+
   @Column({
     type: 'enum',
     enum: PaymentOption,
     default: PaymentOption.COMPLETE,
   })
   paymentOption: PaymentOption;
+
+  // Audit fields
+  @Column({ length: 50, nullable: true })
+  workstation: string; // Terminal/workstation ID that generated the reference
+
+  @Column({ length: 100, nullable: true })
+  issuedBy: string; // Who created the reference
+
+  @Column({ length: 100, nullable: true })
+  approvedBy: string; // Who approved the reference
 
   // Track payments for installment options
   @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })

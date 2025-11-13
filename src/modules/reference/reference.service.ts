@@ -9,6 +9,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, FindOptionsWhere, LessThan, Between } from 'typeorm';
 import { PaymentReference, ReferenceStatus, PaymentOption } from './entities/payment-reference.entity';
+import { ReferenceLineItem } from './entities/reference-line-item.entity';
 import { ReferenceBatch, BatchStatus } from './entities/reference-batch.entity';
 import { CreateReferenceDto } from './dto/create-reference.dto';
 import { UpdateReferenceDto } from './dto/update-reference.dto';
@@ -24,6 +25,8 @@ export class ReferenceService {
   constructor(
     @InjectRepository(PaymentReference)
     private readonly referenceRepository: Repository<PaymentReference>,
+    @InjectRepository(ReferenceLineItem)
+    private readonly lineItemRepository: Repository<ReferenceLineItem>,
     @InjectRepository(ReferenceBatch)
     private readonly batchRepository: Repository<ReferenceBatch>,
     @InjectRepository(ServiceProvider)
@@ -110,16 +113,60 @@ export class ReferenceService {
       ? new Date(createDto.expiresAt)
       : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
+    // Calculate total amount from line items if provided
+    let totalAmount = createDto.amount;
+    if (createDto.lineItems && createDto.lineItems.length > 0) {
+      totalAmount = createDto.lineItems.reduce(
+        (sum, item) => sum + Number(item.serviceAmount),
+        0
+      );
+    }
+
+    // Create the main reference
     const reference = this.referenceRepository.create({
-      ...createDto,
+      serviceProviderId: createDto.serviceProviderId,
+      customerName: createDto.customerName,
+      customerPhone: createDto.customerPhone,
+      customerEmail: createDto.customerEmail,
+      customerId: createDto.customerId,
+      customerIdType: createDto.customerIdType,
+      customerAccount: createDto.customerAccount,
+      amount: totalAmount,
+      minPaymentAmount: createDto.minPaymentAmount,
+      description: createDto.description,
+      currency: createDto.currency || 'TZS',
+      exchangeRate: createDto.exchangeRate || 1.0,
+      paymentOption: createDto.paymentOption || PaymentOption.COMPLETE,
+      workstation: createDto.workstation,
+      issuedBy: createDto.issuedBy,
+      approvedBy: createDto.approvedBy,
+      metadata: createDto.metadata,
       referenceNumber,
       expiresAt,
-      currency: createDto.currency || 'TZS',
-      paymentOption: createDto.paymentOption || PaymentOption.COMPLETE,
       status: ReferenceStatus.ACTIVE,
     });
 
-    return await this.referenceRepository.save(reference);
+    const savedReference = await this.referenceRepository.save(reference);
+
+    // Create line items if provided
+    if (createDto.lineItems && createDto.lineItems.length > 0) {
+      const lineItems = createDto.lineItems.map(item =>
+        this.lineItemRepository.create({
+          referenceId: savedReference.id,
+          serviceDepartment: item.serviceDepartment,
+          serviceType: item.serviceType,
+          serviceReference: item.serviceReference,
+          serviceDescription: item.serviceDescription,
+          serviceAmount: item.serviceAmount,
+          paymentPriority: item.paymentPriority || 1,
+          metadata: item.metadata,
+        })
+      );
+
+      await this.lineItemRepository.save(lineItems);
+    }
+
+    return savedReference;
   }
 
   /**
@@ -527,10 +574,19 @@ export class ReferenceService {
       serviceProviderName: reference.serviceProvider?.businessName,
       customerName: reference.customerName,
       customerPhone: reference.customerPhone,
+      customerEmail: reference.customerEmail,
+      customerId: reference.customerId,
+      customerIdType: reference.customerIdType,
+      customerAccount: reference.customerAccount,
       amount: reference.amount,
+      minPaymentAmount: reference.minPaymentAmount,
       description: reference.description,
       currency: reference.currency,
+      exchangeRate: reference.exchangeRate,
       paymentOption: reference.paymentOption,
+      workstation: reference.workstation,
+      issuedBy: reference.issuedBy,
+      approvedBy: reference.approvedBy,
       totalPaid: reference.totalPaid,
       remainingAmount: reference.getRemainingAmount(),
       installmentCount: reference.installmentCount,

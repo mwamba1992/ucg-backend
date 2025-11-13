@@ -1,0 +1,9 @@
+{
+  "referenceNumber": "TES-0000001-7FB",
+  "payerName": "Jane Doe",
+  "payerPhone": "+255723456789",
+  "amountPaid": 50000,
+  "currency": "TZS",
+  "paymentChannel": "M-Pesa",
+  "description": "Partial payment - First installment"
+}

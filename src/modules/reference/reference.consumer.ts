@@ -43,11 +43,21 @@ export class ReferenceConsumer {
         customerName: message.customerName,
         customerPhone: message.customerPhone,
         customerEmail: message.customerEmail,
+        customerId: message.customerId,
+        customerIdType: message.customerIdType,
+        customerAccount: message.customerAccount,
         amount: message.amount,
+        minPaymentAmount: message.minPaymentAmount,
         paymentOption: message.paymentOption,
         description: message.description,
+        currency: message.currency,
+        exchangeRate: message.exchangeRate,
+        workstation: message.workstation,
+        issuedBy: message.issuedBy,
+        approvedBy: message.approvedBy,
+        expiresAt: message.expiresAt,
         metadata: message.metadata,
-        validUntil: message.validUntil,
+        lineItems: message.lineItems,
       };
 
       const reference = await this.referenceService.create(createDto);

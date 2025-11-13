@@ -1,0 +1,9 @@
+{
+  "referenceNumber": "TES-0000001-7FB",
+  "payerName": "Jane Doe",
+  "payerPhone": "+255723456789",
+  "amountPaid": 100000,
+  "currency": "TZS",
+  "paymentChannel": "Bank",
+  "description": "Final payment - Completing balance"
+}

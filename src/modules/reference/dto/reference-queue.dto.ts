@@ -3,6 +3,19 @@ import { Type } from 'class-transformer';
 import { PaymentOption } from '../entities/payment-reference.entity';
 
 /**
+ * Line item interface for queue messages
+ */
+export interface ReferenceLineItemMessage {
+  serviceDepartment: string;
+  serviceType: string;
+  serviceReference?: string;
+  serviceDescription?: string;
+  serviceAmount: number;
+  paymentPriority?: number;
+  metadata?: Record<string, any>;
+}
+
+/**
  * Message DTO for creating a single reference
  */
 export class CreateReferenceMessage {
@@ -10,13 +23,21 @@ export class CreateReferenceMessage {
   customerName: string;
   customerPhone: string;
   customerEmail?: string;
+  customerId?: string;
+  customerIdType?: string;
+  customerAccount?: string;
   amount: number;
+  minPaymentAmount?: number;
   paymentOption?: PaymentOption; // Optional with default
   description?: string;
-  metadata?: Record<string, any>;
-  validUntil?: Date;
   currency?: string;
+  exchangeRate?: number;
+  workstation?: string;
+  issuedBy?: string;
+  approvedBy?: string;
   expiresAt?: Date;
+  metadata?: Record<string, any>;
+  lineItems?: ReferenceLineItemMessage[];
   requestId?: string; // For tracking and idempotency
   callbackUrl?: string; // Webhook URL for async notifications
 }
@@ -30,10 +51,21 @@ export class BulkReferenceMessage {
     customerName: string;
     customerPhone: string;
     customerEmail?: string;
+    customerId?: string;
+    customerIdType?: string;
+    customerAccount?: string;
     amount: number;
+    minPaymentAmount?: number;
     paymentOption?: PaymentOption; // Optional with default
     description?: string;
+    currency?: string;
+    exchangeRate?: number;
+    workstation?: string;
+    issuedBy?: string;
+    approvedBy?: string;
+    expiresAt?: Date;
     metadata?: Record<string, any>;
+    lineItems?: ReferenceLineItemMessage[];
   }>;
   requestId?: string;
 }
