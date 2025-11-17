@@ -73,7 +73,7 @@ export class ReconciliationService {
     );
 
     // Calculate fees (you can customize the fee structure)
-    const feePercentage = serviceProvider.settings?.transactionFee || 0;
+    const feePercentage = serviceProvider.settings?.commissionRate || 0;
     const totalFees = (totalAmount * feePercentage) / 100;
     const netSettlement = totalAmount - totalFees;
 

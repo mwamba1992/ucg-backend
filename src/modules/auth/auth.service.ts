@@ -1,0 +1,219 @@
+import {
+  Injectable,
+  UnauthorizedException,
+  BadRequestException,
+  ConflictException,
+} from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
+import * as bcrypt from 'bcrypt';
+import { UserService } from '../user/user.service';
+import { User, UserStatus, UserRole } from '../user/entities/user.entity';
+import { LoginDto } from './dto/login.dto';
+import { RegisterDto } from './dto/register.dto';
+import { AuthResponseDto } from './dto/auth-response.dto';
+import { JwtPayload } from './strategies/jwt.strategy';
+
+@Injectable()
+export class AuthService {
+  constructor(
+    private readonly userService: UserService,
+    private readonly jwtService: JwtService,
+    private readonly configService: ConfigService,
+  ) {}
+
+  /**
+   * Validate user credentials
+   */
+  async validateUser(email: string, password: string): Promise<User | null> {
+    const user = await this.userService.findByEmail(email);
+
+    if (!user) {
+      return null;
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+
+    if (!isPasswordValid) {
+      return null;
+    }
+
+    if (user.status !== UserStatus.ACTIVE) {
+      throw new UnauthorizedException('User account is not active');
+    }
+
+    if (user.deletedAt) {
+      throw new UnauthorizedException('User account has been deleted');
+    }
+
+    return user;
+  }
+
+  /**
+   * Login user
+   */
+  async login(loginDto: LoginDto): Promise<AuthResponseDto> {
+    const user = await this.validateUser(loginDto.email, loginDto.password);
+
+    if (!user) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    // Update last login time
+    await this.userService.updateLastLogin(user.id);
+
+    // Generate tokens
+    const tokens = await this.generateTokens(user);
+
+    // Save refresh token
+    await this.userService.updateRefreshToken(user.id, tokens.refreshToken);
+
+    return {
+      ...tokens,
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role,
+        status: user.status,
+      },
+    };
+  }
+
+  /**
+   * Register new user
+   */
+  async register(registerDto: RegisterDto): Promise<AuthResponseDto> {
+    // Check if user already exists
+    const existingUser = await this.userService.findByEmail(registerDto.email);
+
+    if (existingUser) {
+      throw new ConflictException('User with this email already exists');
+    }
+
+    // Create new user
+    const user = await this.userService.create({
+      firstName: registerDto.firstName,
+      lastName: registerDto.lastName,
+      email: registerDto.email,
+      phoneNumber: registerDto.phoneNumber,
+      password: registerDto.password,
+      role: registerDto.role || UserRole.VIEWER,
+      status: UserStatus.PENDING, // Default to PENDING for approval
+    });
+
+    // Generate tokens
+    const tokens = await this.generateTokens(user);
+
+    // Save refresh token
+    await this.userService.updateRefreshToken(user.id, tokens.refreshToken);
+
+    return {
+      ...tokens,
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role,
+        status: user.status,
+      },
+    };
+  }
+
+  /**
+   * Refresh access token
+   */
+  async refreshToken(userId: string, refreshToken: string): Promise<{ accessToken: string }> {
+    const user = await this.userService.findOne(userId);
+
+    if (!user || !user.refreshToken) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+
+    // Verify refresh token
+    const isTokenValid = await bcrypt.compare(refreshToken, user.refreshToken);
+
+    if (!isTokenValid) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+
+    // Generate new access token
+    const payload: JwtPayload = {
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+    };
+
+    const accessToken = this.jwtService.sign(payload);
+
+    return { accessToken };
+  }
+
+  /**
+   * Logout user
+   */
+  async logout(userId: string): Promise<void> {
+    await this.userService.updateRefreshToken(userId, null);
+  }
+
+  /**
+   * Generate access and refresh tokens
+   */
+  private async generateTokens(user: User): Promise<{
+    accessToken: string;
+    refreshToken: string;
+  }> {
+    const payload: JwtPayload = {
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+    };
+
+    const [accessToken, refreshToken] = await Promise.all([
+      this.jwtService.signAsync(payload, {
+        secret: this.configService.get<string>('JWT_SECRET', 'your-secret-key-change-this'),
+        expiresIn: '15m',
+      }),
+      this.jwtService.signAsync(payload, {
+        secret: this.configService.get<string>('JWT_REFRESH_SECRET', 'your-refresh-secret-change-this'),
+        expiresIn: '7d',
+      }),
+    ]);
+
+    return {
+      accessToken,
+      refreshToken,
+    };
+  }
+
+  /**
+   * Verify JWT token
+   */
+  async verifyToken(token: string): Promise<JwtPayload> {
+    try {
+      return this.jwtService.verify(token);
+    } catch (error) {
+      throw new UnauthorizedException('Invalid token');
+    }
+  }
+
+  /**
+   * Get current user profile
+   */
+  async getProfile(userId: string): Promise<User> {
+    return await this.userService.findOne(userId);
+  }
+
+  /**
+   * Change password
+   */
+  async changePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<void> {
+    await this.userService.changePassword(userId, currentPassword, newPassword);
+  }
+}
