@@ -280,7 +280,7 @@ export class DashboardService {
       .groupBy('sp.id')
       .addGroupBy('sp.businessName')
       .addGroupBy('sp.spCode')
-      .orderBy('collectedAmount', 'DESC')
+      .orderBy('SUM(CASE WHEN ref.status = :used THEN ref.amount ELSE 0 END)', 'DESC')
       .limit(limit)
       .getRawMany();
 

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { APP_GUARD } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { typeOrmConfig } from './config/typeorm.config';
@@ -11,6 +12,10 @@ import { WorkflowModule } from './modules/workflow/workflow.module';
 import { RabbitmqModule } from './modules/rabbitmq/rabbitmq.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { ReconciliationModule } from './modules/reconciliation/reconciliation.module';
+import { UserModule } from './modules/user/user.module';
+import { AuthModule } from './modules/auth/auth.module';
+import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
+import { RolesGuard } from './modules/auth/guards/roles.guard';
 
 @Module({
   imports: [
@@ -28,6 +33,10 @@ import { ReconciliationModule } from './modules/reconciliation/reconciliation.mo
     // RabbitMQ module (Global)
     RabbitmqModule,
 
+    // Authentication & Authorization modules
+    AuthModule,
+    UserModule,
+
     // Feature modules
     ServiceProviderModule,
     ReferenceModule,
@@ -37,6 +46,18 @@ import { ReconciliationModule } from './modules/reconciliation/reconciliation.mo
     ReconciliationModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    // Apply JWT guard globally to all routes
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard,
+    },
+    // Apply Roles guard globally
+    {
+      provide: APP_GUARD,
+      useClass: RolesGuard,
+    },
+  ],
 })
 export class AppModule {}
