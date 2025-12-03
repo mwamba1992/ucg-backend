@@ -92,7 +92,7 @@ async function bootstrap() {
     .addTag('References', 'Payment reference generation and management')
     .addTag('Payments Service', 'Payment processing and tracking')
     .addTag('Workflows', 'Workflow management and task processing')
-    .addServer(`http://localhost:${process.env.PORT || 3000}`, 'Local Development')
+    .addServer(`http://192.168.1.94:${process.env.PORT || 3000}`, 'Local Development')
     .addServer('https://api.ucg.mhb.co.tz', 'Production')
     .build();
 
@@ -131,8 +131,8 @@ async function bootstrap() {
 
   console.log(`
     🚀 UCG API Server is running!
-    📝 API Documentation: http://localhost:${port}/api/docs
-    🔗 API Endpoint: http://localhost:${port}/${apiPrefix}
+    📝 API Documentation: http://192.168.1.94:${port}/api/docs
+    🔗 API Endpoint: http://192.168.1.94:${port}/${apiPrefix}
     🐰 RabbitMQ Consumers: Active
   `);
 }

@@ -88,4 +88,5 @@ export class ServiceProviderSettings {
   })
   @JoinColumn({ name: 'serviceProviderId' })
   serviceProvider: ServiceProvider;
+  transactionFee: number;
 }
