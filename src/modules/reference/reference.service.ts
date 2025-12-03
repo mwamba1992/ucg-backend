@@ -5,6 +5,7 @@ import {
   ConflictException,
   Inject,
   forwardRef,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, FindOptionsWhere, LessThan, Between } from 'typeorm';
@@ -18,10 +19,13 @@ import { BulkCreateReferenceDto } from './dto/bulk-create-reference.dto';
 import { BulkGenerateReferenceDto } from './dto/bulk-generate-reference.dto';
 import { ReferenceProducer } from './reference.producer';
 import { ServiceProvider } from '../service-provider/entities/service-provider.entity';
+import { NotificationService } from '../notification/notification.service';
 import * as crypto from 'crypto';
 
 @Injectable()
 export class ReferenceService {
+  private readonly logger = new Logger(ReferenceService.name);
+
   constructor(
     @InjectRepository(PaymentReference)
     private readonly referenceRepository: Repository<PaymentReference>,
@@ -33,6 +37,7 @@ export class ReferenceService {
     private readonly serviceProviderRepository: Repository<ServiceProvider>,
     @Inject(forwardRef(() => ReferenceProducer))
     private readonly referenceProducer: ReferenceProducer,
+    private readonly notificationService: NotificationService,
   ) {}
 
   /**
@@ -164,6 +169,21 @@ export class ReferenceService {
       );
 
       await this.lineItemRepository.save(lineItems);
+    }
+
+    // Send notification to customer about reference creation
+    try {
+      await this.notificationService.notifyReferenceCreated(
+        serviceProvider.email,
+        savedReference.customerPhone,
+        savedReference.customerName,
+        savedReference.referenceNumber,
+        Number(savedReference.amount),
+        savedReference.description || 'Payment',
+        serviceProvider.businessName,
+      );
+    } catch (error) {
+      this.logger.error(`Failed to send reference creation notification: ${error.message}`);
     }
 
     return savedReference;
@@ -713,8 +733,27 @@ export class ReferenceService {
       resultFileUrl,
     });
 
-    // Send webhook notification (in production)
-    // await this.sendWebhookNotification(serviceProviderId, batchId);
+    // Send batch completion notification to service provider
+    try {
+      const batch = await this.batchRepository.findOne({
+        where: { id: batchId },
+        relations: ['serviceProvider'],
+      });
+
+      if (batch && batch.serviceProvider) {
+        await this.notificationService.notifyBatchReferenceComplete(
+          batch.serviceProvider.email,
+          batch.serviceProvider.phoneNumber,
+          batch.serviceProvider.businessName,
+          batch.batchId,
+          batch.totalRequested,
+          successCount,
+          failureCount,
+        );
+      }
+    } catch (error) {
+      this.logger.error(`Failed to send batch completion notification: ${error.message}`);
+    }
   }
 
   /**

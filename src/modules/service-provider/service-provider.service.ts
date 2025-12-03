@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ConflictException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, FindOptionsWhere, Not } from 'typeorm';
@@ -16,10 +17,13 @@ import { QueryServiceProviderDto } from './dto/query-service-provider.dto';
 import { CreateBankAccountDto } from './dto/bank-account.dto';
 import { UpdateBankAccountDto } from './dto/update-bank-account.dto';
 import { WorkflowService } from '../workflow/workflow.service';
+import { NotificationService } from '../notification/notification.service';
 import * as crypto from 'crypto';
 
 @Injectable()
 export class ServiceProviderService {
+  private readonly logger = new Logger(ServiceProviderService.name);
+
   constructor(
     @InjectRepository(ServiceProvider)
     private readonly serviceProviderRepository: Repository<ServiceProvider>,
@@ -30,6 +34,7 @@ export class ServiceProviderService {
     @InjectRepository(ServiceProviderSettings)
     private readonly settingsRepository: Repository<ServiceProviderSettings>,
     private readonly workflowService: WorkflowService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   /**
@@ -136,7 +141,19 @@ export class ServiceProviderService {
     } catch (error) {
       // Log warning but don't fail the creation
       // Workflow can be started manually later if needed
-      console.warn(`Failed to start workflow for SP ${savedSp.id}:`, error.message);
+      this.logger.warn(`Failed to start workflow for SP ${savedSp.id}:`, error.message);
+    }
+
+    // Send registration notification
+    try {
+      await this.notificationService.notifyServiceProviderRegistration(
+        savedSp.email,
+        savedSp.phoneNumber,
+        savedSp.businessName,
+        savedSp.spCode,
+      );
+    } catch (error) {
+      this.logger.error(`Failed to send registration notification: ${error.message}`);
     }
 
     // Reload with relations
@@ -308,6 +325,18 @@ export class ServiceProviderService {
 
     await this.serviceProviderRepository.save(serviceProvider);
 
+    // Send approval notification
+    try {
+      await this.notificationService.notifyServiceProviderApproval(
+        serviceProvider.email,
+        serviceProvider.phoneNumber,
+        serviceProvider.businessName,
+        serviceProvider.apiKey,
+      );
+    } catch (error) {
+      this.logger.error(`Failed to send approval notification: ${error.message}`);
+    }
+
     return await this.findOne(id);
   }
 
@@ -324,6 +353,18 @@ export class ServiceProviderService {
     serviceProvider.rejectionReason = rejectionReason;
 
     await this.serviceProviderRepository.save(serviceProvider);
+
+    // Send rejection notification
+    try {
+      await this.notificationService.notifyServiceProviderRejection(
+        serviceProvider.email,
+        serviceProvider.phoneNumber,
+        serviceProvider.businessName,
+        rejectionReason,
+      );
+    } catch (error) {
+      this.logger.error(`Failed to send rejection notification: ${error.message}`);
+    }
 
     return await this.findOne(id);
   }

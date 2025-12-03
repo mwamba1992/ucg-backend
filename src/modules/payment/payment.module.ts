@@ -7,11 +7,13 @@ import { Payment } from './entities/payment.entity';
 import { PaymentService } from './payment.service';
 import { PaymentProducer } from './payment.producer';
 import { PaymentConsumer } from './payment.consumer';
+import { NotificationModule } from '../notification/notification.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Payment, PaymentReference]),
     ReferenceModule, // Make ReferenceService available here
+    NotificationModule,
   ],
   controllers: [PaymentController, PaymentConsumer],
   providers: [PaymentService, PaymentProducer],

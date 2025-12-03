@@ -7,6 +7,7 @@ import { ReferenceService } from '../reference/reference.service';
 import { CreatePaymentDto } from './dto/payment.dto';
 import { PaymentReference, ReferenceStatus } from '../reference/entities/payment-reference.entity';
 import { PaymentProducer } from './payment.producer';
+import { NotificationService } from '../notification/notification.service';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -21,6 +22,7 @@ export class PaymentService {
     private readonly referenceService: ReferenceService,
     @Inject(forwardRef(() => PaymentProducer))
     private readonly paymentProducer: PaymentProducer,
+    private readonly notificationService: NotificationService,
   ) {}
 
   /**
@@ -70,6 +72,30 @@ export class PaymentService {
       `Payment processed: ${dto.amountPaid} for reference ${dto.referenceNumber}. ` +
       `Total paid: ${Number(reference.totalPaid) + Number(dto.amountPaid)}/${reference.amount}`,
     );
+
+    // Send notifications after successful payment
+    try {
+      // Notify customer
+      await this.notificationService.notifyCustomerPaymentSuccess(
+        reference.customerPhone,
+        reference.customerName,
+        reference.referenceNumber,
+        Number(dto.amountPaid),
+        reference.serviceProvider.businessName,
+      );
+
+      // Notify service provider
+      await this.notificationService.notifyPaymentReceived(
+        reference.serviceProvider.email,
+        reference.serviceProvider.phoneNumber,
+        reference.referenceNumber,
+        Number(dto.amountPaid),
+        reference.customerName,
+        reference.serviceProvider.businessName,
+      );
+    } catch (error) {
+      this.logger.error(`Failed to send payment notifications: ${error.message}`);
+    }
 
     return savedPayment;
   }
