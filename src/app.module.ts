@@ -14,6 +14,7 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { ReconciliationModule } from './modules/reconciliation/reconciliation.module';
 import { UserModule } from './modules/user/user.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { CBSModule } from './modules/cbs/cbs.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import { RolesGuard } from './modules/auth/guards/roles.guard';
 
@@ -44,6 +45,7 @@ import { RolesGuard } from './modules/auth/guards/roles.guard';
     WorkflowModule,
     DashboardModule,
     ReconciliationModule,
+    CBSModule, // CBS integration for fund transfers
   ],
   controllers: [AppController],
   providers: [
