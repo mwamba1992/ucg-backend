@@ -8,6 +8,8 @@ import { CreatePaymentDto } from './dto/payment.dto';
 import { PaymentReference, ReferenceStatus } from '../reference/entities/payment-reference.entity';
 import { PaymentProducer } from './payment.producer';
 import { NotificationService } from '../notification/notification.service';
+import { CBSService } from '../cbs/cbs.service';
+import { TransferType } from '../cbs/entities/cbs-transfer.entity';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -23,6 +25,7 @@ export class PaymentService {
     @Inject(forwardRef(() => PaymentProducer))
     private readonly paymentProducer: PaymentProducer,
     private readonly notificationService: NotificationService,
+    private readonly cbsService: CBSService,
   ) {}
 
   /**
@@ -73,6 +76,15 @@ export class PaymentService {
       `Total paid: ${Number(reference.totalPaid) + Number(dto.amountPaid)}/${reference.amount}`,
     );
 
+    // Execute CBS transfer to settle funds
+    try {
+      await this.executeCBSTransfer(savedPayment, reference);
+    } catch (error) {
+      this.logger.error(`Failed to execute CBS transfer: ${error.message}`);
+      // Don't fail the payment, but log the error
+      // Transfer can be retried later
+    }
+
     // Send notifications after successful payment
     try {
       // Notify customer
@@ -98,6 +110,89 @@ export class PaymentService {
     }
 
     return savedPayment;
+  }
+
+  /**
+   * Execute CBS transfer for payment settlement
+   */
+  private async executeCBSTransfer(
+    payment: Payment,
+    reference: PaymentReference,
+  ): Promise<void> {
+    // Check if CBS transfer is enabled
+    const cbsTransferEnabled = process.env.CBS_TRANSFER_ENABLED === 'true';
+
+    if (!cbsTransferEnabled) {
+      this.logger.log('CBS transfer is disabled - skipping');
+      return;
+    }
+
+    const serviceProvider = reference.serviceProvider;
+    const settings = serviceProvider.settings;
+
+    if (!settings) {
+      this.logger.warn(
+        `Service provider ${serviceProvider.id} has no settings configured - skipping CBS transfer`,
+      );
+      return;
+    }
+
+    // Get primary bank account for service provider
+    const primaryBankAccount = serviceProvider.bankAccounts?.find(
+      (account) => account.isPrimary && account.isActive,
+    );
+
+    if (!primaryBankAccount) {
+      this.logger.warn(
+        `Service provider ${serviceProvider.businessName} has no active primary bank account - skipping CBS transfer`,
+      );
+      return;
+    }
+
+    // Calculate commission and net amount
+    // NOTE: Commission rate is set to 0 for now (configurable in future)
+    const grossAmount = Number(payment.amountPaid);
+    const commissionRate = 0; // TODO: Make configurable via settings or config
+    const commission = this.cbsService.calculateCommission(
+      grossAmount,
+      commissionRate,
+    );
+    const netAmount = grossAmount - commission;
+
+    // Get UCG GL account from environment or config
+    const ucgGLAccount = process.env.UCG_GL_ACCOUNT || '1-09-001-10-1200-1200108';
+    const spDepositAccount = primaryBankAccount.accountNumber;
+
+    this.logger.log(
+      `Initiating CBS transfer: ` +
+      `Amount: ${netAmount} (Gross: ${grossAmount}, Commission: ${commission}, Rate: ${commissionRate}%) ` +
+      `from ${ucgGLAccount} to ${spDepositAccount}`,
+    );
+
+    // Execute transfer
+    const transferResult = await this.cbsService.executeTransfer(
+      {
+        reference: payment.referenceNumber,
+        creditAccount: spDepositAccount,
+        debitAccount: ucgGLAccount,
+        currency: payment.currency || 'TZS',
+        amount: netAmount,
+        description: `Payment settlement for ${reference.referenceNumber} - ${serviceProvider.businessName}`,
+        type: TransferType.GL_TO_DEPOSIT,
+      },
+      payment.id,
+    );
+
+    if (transferResult.success) {
+      this.logger.log(
+        `CBS transfer successful for payment ${payment.id}: ${transferResult.cbsReference}`,
+      );
+    } else {
+      this.logger.error(
+        `CBS transfer failed for payment ${payment.id}: ${transferResult.error}`,
+      );
+      // Log but don't throw - transfer can be retried
+    }
   }
 
   /**
