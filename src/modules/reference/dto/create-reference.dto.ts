@@ -232,7 +232,8 @@ export class CreateReferenceDto {
   })
   @IsOptional()
   @IsDateString()
-  expiresAt?: Date;
+  expiresAt?: string;
+  
 
   @ApiPropertyOptional({
     description: 'Additional metadata',
