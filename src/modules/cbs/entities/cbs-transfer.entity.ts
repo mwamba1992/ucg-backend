@@ -30,7 +30,6 @@ export class CBSTransfer {
   id: string;
 
   @Column({ type: 'uuid', nullable: true })
-  @Index()
   paymentId: string; // Link to payment
 
   @Column({ type: 'varchar', length: 50 })
