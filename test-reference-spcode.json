@@ -1,0 +1,8 @@
+{
+  "spCode": "TES",
+  "customerName": "Alice Williams",
+  "customerPhone": "+255745678901",
+  "customerEmail": "alice@example.com",
+  "amount": 100000,
+  "description": "Test payment with spCode"
+}

@@ -81,13 +81,23 @@ export class ReferenceLineItemDto {
 }
 
 export class CreateReferenceDto {
-  @ApiProperty({
-    description: 'Service Provider ID',
-    example: 'uuid-here',
+  @ApiPropertyOptional({
+    description: 'Service Provider ID (UUID) - Use either this OR spCode',
+    example: '58bfe4aa-0843-47ea-8a19-467f702aebc4',
   })
-  @IsNotEmpty()
+  @IsOptional()
   @IsUUID()
-  serviceProviderId: string;
+  serviceProviderId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Service Provider Code (3 characters) - Use either this OR serviceProviderId',
+    example: 'TES',
+    maxLength: 3,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(3)
+  spCode?: string;
 
   @ApiProperty({
     description: 'Customer full name',

@@ -95,22 +95,45 @@ export class ReferenceService {
   }
 
   /**
+   * Resolve service provider from either UUID or spCode
+   */
+  private async resolveServiceProvider(createDto: CreateReferenceDto) {
+    // Validate that at least one identifier is provided
+    if (!createDto.serviceProviderId && !createDto.spCode) {
+      throw new BadRequestException('Either serviceProviderId or spCode must be provided');
+    }
+
+    // Build query based on what's provided
+    const where: any = {};
+    if (createDto.serviceProviderId) {
+      where.id = createDto.serviceProviderId;
+    } else if (createDto.spCode) {
+      where.spCode = createDto.spCode.toUpperCase();
+    }
+
+    const serviceProvider = await this.serviceProviderRepository.findOne({ where });
+
+    if (!serviceProvider) {
+      const identifier = createDto.serviceProviderId || createDto.spCode;
+      const type = createDto.serviceProviderId ? 'ID' : 'code';
+      throw new NotFoundException(`Service provider with ${type} ${identifier} not found`);
+    }
+
+    return serviceProvider;
+  }
+
+  /**
    * Create a new payment reference
    */
   async create(createDto: CreateReferenceDto): Promise<PaymentReference> {
-    // Fetch the service provider to get the actual spCode
-    const serviceProvider = await this.serviceProviderRepository.findOne({
-      where: { id: createDto.serviceProviderId },
-    });
-
-    if (!serviceProvider) {
-      throw new NotFoundException(`Service provider with ID ${createDto.serviceProviderId} not found`);
-    }
+    // Resolve the service provider (supports both UUID and spCode)
+    const serviceProvider = await this.resolveServiceProvider(createDto);
+    const serviceProviderId = serviceProvider.id;
 
     // Generate reference number using the actual spCode and serviceProviderId
     const referenceNumber = await this.generateReferenceNumber(
       serviceProvider.spCode,
-      createDto.serviceProviderId
+      serviceProviderId
     );
 
     // Set default expiry if not provided (30 days from now)
@@ -129,7 +152,7 @@ export class ReferenceService {
 
     // Create the main reference
     const reference = this.referenceRepository.create({
-      serviceProviderId: createDto.serviceProviderId,
+      serviceProviderId: serviceProviderId,
       customerName: createDto.customerName,
       customerPhone: createDto.customerPhone,
       customerEmail: createDto.customerEmail,
@@ -872,11 +895,15 @@ export class ReferenceService {
       return await this.create(createDto);
     }
 
+    // Validate service provider exists BEFORE queuing (supports both UUID and spCode)
+    const serviceProvider = await this.resolveServiceProvider(createDto);
+
     // Asynchronous creation via RabbitMQ
     const requestId = crypto.randomUUID();
 
     const message = {
       ...createDto,
+      serviceProviderId: serviceProvider.id, // Always use resolved UUID
       expiresAt: createDto.expiresAt ? new Date(createDto.expiresAt) : undefined,
       requestId,
     };
@@ -899,6 +926,15 @@ export class ReferenceService {
     if (!useQueue) {
       // Synchronous bulk creation
       return await this.bulkGenerate(serviceProviderId, bulkDto);
+    }
+
+    // Validate service provider exists BEFORE queuing
+    const serviceProvider = await this.serviceProviderRepository.findOne({
+      where: { id: serviceProviderId },
+    });
+
+    if (!serviceProvider) {
+      throw new NotFoundException(`Service provider with ID ${serviceProviderId} not found`);
     }
 
     // Asynchronous creation via RabbitMQ

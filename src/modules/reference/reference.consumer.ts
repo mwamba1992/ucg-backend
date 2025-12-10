@@ -106,9 +106,33 @@ export class ReferenceConsumer {
         error.stack,
       );
 
-      // Negative acknowledge with requeue option
-      // After max retries (configured in queue), it will go to DLX
-      channel.nack(originalMsg, false, true);
+      // Check if error is a validation error (NotFoundException, BadRequestException)
+      // These should NOT be requeued as they will always fail
+      const isValidationError = error.name === 'NotFoundException' ||
+                                 error.name === 'BadRequestException' ||
+                                 error.message.includes('not found') ||
+                                 error.message.includes('Service provider');
+
+      if (isValidationError) {
+        // Acknowledge the message to remove it from queue
+        // Send callback notification if URL provided
+        channel.ack(originalMsg);
+        this.logger.warn(`Validation error - message removed from queue: ${error.message}`);
+
+        if (message.callbackUrl) {
+          this.referenceProducer.emitNotification({
+            callbackUrl: message.callbackUrl,
+            requestId: message.requestId,
+            success: false,
+            error: error.message,
+            retryCount: 0,
+          });
+        }
+      } else {
+        // Negative acknowledge with requeue for transient errors (DB connection, etc.)
+        // After max retries (configured in queue), it will go to DLX
+        channel.nack(originalMsg, false, true);
+      }
 
       return {
         success: false,
