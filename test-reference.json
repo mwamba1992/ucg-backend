@@ -1,0 +1,34 @@
+{
+  "serviceProviderId": "58bfe4aa-0843-47ea-8a19-467f702aebc4",
+  "customerName": "Alice Williams",
+  "customerPhone": "+255745678901",
+  "customerEmail": "alice@hospital.co.tz",
+  "amount": 100000,
+  "paymentOption": "PARTIAL",
+  "minPaymentAmount": 20000,
+  "description": "Hospital bill - Outpatient services",
+  "lineItems": [
+    {
+      "serviceDepartment": "3001",
+      "serviceType": "140354565431",
+      "serviceDescription": "Consultation fee",
+      "serviceAmount": 30000,
+      "paymentPriority": 1
+    },
+    {
+      "serviceDepartment": "3002",
+      "serviceType": "140354565432",
+      "serviceDescription": "Laboratory tests",
+      "serviceAmount": 40000,
+      "paymentPriority": 2
+    },
+    {
+      "serviceDepartment": "3003",
+      "serviceType": "140354565433",
+      "serviceDescription": "X-Ray",
+      "serviceAmount": 30000,
+      "paymentPriority": 3
+    }
+  ],
+  "expiresAt": "2025-12-31T23:59:59.000Z"
+}

@@ -55,7 +55,7 @@ export class ReferenceConsumer {
         workstation: message.workstation,
         issuedBy: message.issuedBy,
         approvedBy: message.approvedBy,
-        expiresAt: message.expiresAt,
+        expiresAt: message.expiresAt ? message.expiresAt.toISOString() : undefined,
         metadata: message.metadata,
         lineItems: message.lineItems,
       };
@@ -143,6 +143,7 @@ export class ReferenceConsumer {
           const createDto = {
             serviceProviderId: message.serviceProviderId,
             ...refData,
+            expiresAt: refData.expiresAt ? refData.expiresAt.toISOString() : undefined,
           };
 
           const reference = await this.referenceService.create(createDto);

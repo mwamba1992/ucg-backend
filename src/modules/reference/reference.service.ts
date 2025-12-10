@@ -690,7 +690,7 @@ export class ReferenceService {
 
         // Set expiry if not provided
         if (!createDto.expiresAt && bulkDto.defaultExpiryDays) {
-          createDto.expiresAt = this.calculateExpiry(bulkDto.defaultExpiryDays);
+          createDto.expiresAt = this.calculateExpiry(bulkDto.defaultExpiryDays).toISOString();
         }
 
         const reference = await this.create(createDto);
@@ -877,6 +877,7 @@ export class ReferenceService {
 
     const message = {
       ...createDto,
+      expiresAt: createDto.expiresAt ? new Date(createDto.expiresAt) : undefined,
       requestId,
     };
 
@@ -908,6 +909,7 @@ export class ReferenceService {
       references: bulkDto.references.map(ref => ({
         ...ref,
         paymentOption: ref.paymentOption || PaymentOption.COMPLETE,
+        expiresAt: ref.expiresAt ? new Date(ref.expiresAt) : undefined,
       })),
       requestId,
     };
