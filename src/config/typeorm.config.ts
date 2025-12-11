@@ -3,7 +3,7 @@ import { DataSource, DataSourceOptions } from 'typeorm';
 
 export const typeOrmConfig = (): TypeOrmModuleOptions => ({
   type: 'postgres',
-  host: process.env.DB_HOST || '192.168.1.94',
+  host: process.env.DB_HOST || 'localhost',
   port: parseInt(process.env.DB_PORT, 10) || 5432,
   username: process.env.DB_USERNAME || 'postgres',
   password: process.env.DB_PASSWORD || 'UCG4321',
@@ -18,7 +18,7 @@ export const typeOrmConfig = (): TypeOrmModuleOptions => ({
 // DataSource for migrations
 const dataSourceOptions: DataSourceOptions = {
   type: 'postgres',
-  host: process.env.DB_HOST || '192.168.1.94',
+  host: process.env.DB_HOST || 'localhost',
   port: parseInt(process.env.DB_PORT, 10) || 5432,
   username: process.env.DB_USERNAME || 'postgres',
   password: process.env.DB_PASSWORD || 'UCG4321',
