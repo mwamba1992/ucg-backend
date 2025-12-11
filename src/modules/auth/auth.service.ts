@@ -3,6 +3,7 @@ import {
   UnauthorizedException,
   BadRequestException,
   ConflictException,
+  Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -13,14 +14,26 @@ import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
 import { JwtPayload } from './strategies/jwt.strategy';
+import axios from 'axios';
+import { firstValueFrom } from 'rxjs';
+import { HttpService } from '@nestjs/axios';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+  private readonly cbsApiUrl: string;
+    private readonly clientId: string;
+    private readonly clientSecret: string;
   constructor(
     private readonly userService: UserService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
-  ) {}
+    private readonly httpService: HttpService,
+  ) {
+    this.cbsApiUrl = this.configService.get<string>('CBS_API_URL');
+    this.clientId = this.configService.get<string>('CBS_CLIENT_ID');
+    this.clientSecret = this.configService.get<string>('CBS_CLIENT_SECRET');
+  }
 
   /**
    * Validate user credentials
@@ -216,4 +229,35 @@ export class AuthService {
   ): Promise<void> {
     await this.userService.changePassword(userId, currentPassword, newPassword);
   }
+
+  /**
+   * Login client to get access token
+   */
+  public async loginClient(): Promise<string> {
+    try {
+      const response = await firstValueFrom(
+        this.httpService.post<any>(
+          `${this.cbsApiUrl}/auth/login/client`,
+          {
+            clientId: this.clientId,
+            clientSecret: this.clientSecret,
+          },
+          {
+            headers: { 'Content-Type': 'application/json' },
+          },
+        ),
+      );
+
+      const token = response.data?.data?.accessToken;
+      if (!token) {
+        throw new Error('Failed to retrieve access token');
+      }
+
+      return token;
+    } catch (error: any) {
+      this.logger.error('Client login failed', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
 }
