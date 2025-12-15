@@ -14,7 +14,6 @@ INSERT INTO users (
   "lastName",
   role,
   status,
-  "isActive",
   "phoneNumber",
   "createdAt",
   "updatedAt"
@@ -26,7 +25,6 @@ INSERT INTO users (
   'Admin',
   'SUPER_ADMIN',
   'ACTIVE',
-  true,
   '+255711000001',
   NOW(),
   NOW()
@@ -41,7 +39,6 @@ INSERT INTO users (
   "lastName",
   role,
   status,
-  "isActive",
   "phoneNumber",
   "createdAt",
   "updatedAt"
@@ -53,7 +50,6 @@ INSERT INTO users (
   'User',
   'ADMIN',
   'ACTIVE',
-  true,
   '+255711000002',
   NOW(),
   NOW()
@@ -68,7 +64,6 @@ INSERT INTO users (
   "lastName",
   role,
   status,
-  "isActive",
   "phoneNumber",
   "createdAt",
   "updatedAt"
@@ -80,7 +75,6 @@ INSERT INTO users (
   'User',
   'MANAGER',
   'ACTIVE',
-  true,
   '+255711000003',
   NOW(),
   NOW()
@@ -95,7 +89,6 @@ INSERT INTO users (
   "lastName",
   role,
   status,
-  "isActive",
   "phoneNumber",
   "createdAt",
   "updatedAt"
@@ -107,7 +100,6 @@ INSERT INTO users (
   'User',
   'OPERATOR',
   'ACTIVE',
-  true,
   '+255711000004',
   NOW(),
   NOW()
@@ -122,7 +114,6 @@ INSERT INTO users (
   "lastName",
   role,
   status,
-  "isActive",
   "phoneNumber",
   "createdAt",
   "updatedAt"
@@ -134,7 +125,6 @@ INSERT INTO users (
   'User',
   'VIEWER',
   'ACTIVE',
-  true,
   '+255711000005',
   NOW(),
   NOW()
@@ -147,7 +137,6 @@ SELECT
   "lastName",
   role,
   status,
-  "isActive",
   "createdAt"
 FROM users
 WHERE email LIKE '%@ucg.co.tz'
