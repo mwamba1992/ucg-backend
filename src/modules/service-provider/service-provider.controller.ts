@@ -9,6 +9,7 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -16,6 +17,7 @@ import {
   ApiResponse,
   ApiParam,
   ApiQuery,
+  ApiBearerAuth,
 } from '@nestjs/swagger';
 import { ServiceProviderService } from './service-provider.service';
 import { CreateServiceProviderDto } from './dto/create-service-provider.dto';
@@ -24,8 +26,14 @@ import { QueryServiceProviderDto } from './dto/query-service-provider.dto';
 import { ServiceProviderResponseDto } from './dto/service-provider-response.dto';
 import { CreateBankAccountDto } from './dto/bank-account.dto';
 import { UpdateBankAccountDto } from './dto/update-bank-account.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { UserRole } from '../user/entities/user.entity';
 
 @ApiTags('Service Providers')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('service-providers')
 export class ServiceProviderController {
   constructor(

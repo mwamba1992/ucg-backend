@@ -8,12 +8,14 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,
   ApiResponse,
   ApiParam,
+  ApiBearerAuth,
 } from '@nestjs/swagger';
 import { ReferenceService } from './reference.service';
 import { CreateReferenceDto } from './dto/create-reference.dto';
@@ -24,8 +26,12 @@ import {
   ReferenceResponseDto,
   ValidateReferenceResponseDto,
 } from './dto/reference-response.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
 
 @ApiTags('Payment References')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('references')
 export class ReferenceController {
   constructor(private readonly referenceService: ReferenceService) {}

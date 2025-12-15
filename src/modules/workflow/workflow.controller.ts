@@ -7,12 +7,15 @@ import {
   Request,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { WorkflowService } from './workflow.service';
 import { StartWorkflowDto } from './dto/start-workflow.dto';
 import { CompleteTaskDto } from './dto/complete-task.dto';
 import { RejectWorkflowDto } from './dto/reject-workflow.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
 
 /**
  * Workflow Management Controller
@@ -21,9 +24,9 @@ import { RejectWorkflowDto } from './dto/reject-workflow.dto';
  * (Service Providers, Transactions, etc.)
  */
 @ApiTags('Workflows')
-@Controller('workflows')
-// @UseGuards(JwtAuthGuard) // TODO: Implement authentication
 @ApiBearerAuth()
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Controller('workflows')
 export class WorkflowController {
   constructor(private readonly workflowService: WorkflowService) {}
 
