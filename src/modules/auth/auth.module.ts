@@ -1,4 +1,5 @@
-import { Module } from '@nestjs/common';
+import { Module} from '@nestjs/common';
+import { HttpModule } from '@nestjs/axios'; 
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { ConfigModule, ConfigService } from '@nestjs/config';
@@ -19,14 +20,13 @@ import { NotificationModule } from '../notification/notification.module';
     UserModule,
     PassportModule,
     NotificationModule,
+    HttpModule.register({ timeout: 30000 }), // <-- must import HttpModule
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: async (configService: ConfigService) => ({
         secret: configService.get<string>('JWT_SECRET', 'your-secret-key-change-this'),
-        signOptions: {
-          expiresIn: '15m',
-        },
+        signOptions: { expiresIn: '15m' },
       }),
     }),
   ],

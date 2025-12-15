@@ -6,6 +6,7 @@ import { Repository } from 'typeorm';
 import { firstValueFrom } from 'rxjs';
 import { CBSTransfer, TransferStatus, TransferType } from './entities/cbs-transfer.entity';
 import { CreateTransferDto, TransferResponseDto } from './dto/transfer.dto';
+import { AuthService } from '../auth/auth.service';
 
 export interface TransferResult {
   success: boolean;
@@ -20,14 +21,19 @@ export interface TransferResult {
 export class CBSService {
   private readonly logger = new Logger(CBSService.name);
   private readonly cbsApiUrl: string;
+  private readonly clientId: string;
+  private readonly clientSecret: string;
 
   constructor(
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
     @InjectRepository(CBSTransfer)
     private readonly transferRepo: Repository<CBSTransfer>,
+    private readonly authService: AuthService,
   ) {
     this.cbsApiUrl = this.configService.get<string>('CBS_API_URL');
+    this.clientId = this.configService.get<string>('CBS_CLIENT_ID');
+    this.clientSecret = this.configService.get<string>('CBS_CLIENT_SECRET');
   }
 
   /**
@@ -67,10 +73,14 @@ export class CBSService {
         `from ${dto.debitAccount} to ${dto.creditAccount}`,
       );
 
-      // Call CBS API
+      // Get access token
+      
+      const token = await this.authService.loginClient();
+
+      // Call CBS API with Bearer token
       const response = await firstValueFrom(
         this.httpService.post<TransferResponseDto>(
-          `${this.cbsApiUrl}/G2D`,
+          `${this.cbsApiUrl}/cbs-adapter/payments/G2D`,
           {
             reference: dto.reference,
             creditAccount: dto.creditAccount,
@@ -80,12 +90,17 @@ export class CBSService {
             description: dto.description,
             type: dto.type,
           },
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`,
+            },
+          },
         ),
       );
 
-      // Check CBS response
+      // Process CBS response
       if (response.data.statusCode === '6200') {
-        // Update transfer as successful
         savedTransfer.status = TransferStatus.SUCCESS;
         savedTransfer.cbsResponseCode = response.data.statusCode;
         savedTransfer.cbsResponseMessage = response.data.statusDescription;
@@ -106,7 +121,6 @@ export class CBSService {
           statusDescription: response.data.statusDescription,
         };
       } else {
-        // Transfer failed
         savedTransfer.status = TransferStatus.FAILED;
         savedTransfer.cbsResponseCode = response.data.statusCode;
         savedTransfer.cbsResponseMessage = response.data.statusDescription;
@@ -126,16 +140,12 @@ export class CBSService {
           error: response.data.statusDescription,
         };
       }
-    } catch (error) {
-      // Handle errors
+    } catch (error: any) {
       savedTransfer.status = TransferStatus.FAILED;
       savedTransfer.errorMessage = error.message;
       await this.transferRepo.save(savedTransfer);
 
-      this.logger.error(
-        `CBS transfer failed: ${error.message}`,
-        error.stack,
-      );
+      this.logger.error(`CBS transfer failed: ${error.message}`, error.stack);
 
       return {
         success: false,
@@ -167,12 +177,10 @@ export class CBSService {
       };
     }
 
-    // Increment retry count
     transfer.retryCount += 1;
     transfer.status = TransferStatus.PENDING;
     await this.transferRepo.save(transfer);
 
-    // Execute transfer again
     return this.executeTransfer({
       reference: transfer.reference,
       creditAccount: transfer.creditAccount,
@@ -188,9 +196,7 @@ export class CBSService {
    * Get transfer by ID
    */
   async getTransfer(transferId: string): Promise<CBSTransfer> {
-    return this.transferRepo.findOne({
-      where: { id: transferId },
-    });
+    return this.transferRepo.findOne({ where: { id: transferId } });
   }
 
   /**
@@ -223,7 +229,6 @@ export class CBSService {
 
   /**
    * Build transfer for payment settlement
-   * Transfers payment amount minus commission to service provider's account
    */
   buildSettlementTransfer(
     referenceNumber: string,
@@ -238,8 +243,8 @@ export class CBSService {
 
     return {
       reference: referenceNumber,
-      creditAccount: spDepositAccount, // Service provider's account
-      debitAccount: ucgGLAccount, // UCG GL account
+      creditAccount: spDepositAccount,
+      debitAccount: ucgGLAccount,
       currency,
       amount: netAmount,
       description: `Settlement for ${referenceNumber} (Amount: ${grossAmount}, Commission: ${commission})`,
