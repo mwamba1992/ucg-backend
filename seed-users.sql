@@ -20,7 +20,7 @@ INSERT INTO users (
 ) VALUES (
   gen_random_uuid(),
   'superadmin@ucg.co.tz',
-  '$2b$10$YQj3VzW8qH4Y0xF1nZ7Svu6BV8kX9Y5N0uA1MZ8qD3v5V7W9X1Y2Z', -- Test@123
+  '$2b$10$f28O19qOru2HTH/eXHc8e.IOEOrVj.Rkvy2oOsBu2M/8DNRIhiBK.', -- Test@123
   'Super',
   'Admin',
   'SUPER_ADMIN',
@@ -45,7 +45,7 @@ INSERT INTO users (
 ) VALUES (
   gen_random_uuid(),
   'admin@ucg.co.tz',
-  '$2b$10$YQj3VzW8qH4Y0xF1nZ7Svu6BV8kX9Y5N0uA1MZ8qD3v5V7W9X1Y2Z', -- Test@123
+  '$2b$10$f28O19qOru2HTH/eXHc8e.IOEOrVj.Rkvy2oOsBu2M/8DNRIhiBK.', -- Test@123
   'Admin',
   'User',
   'ADMIN',
@@ -70,7 +70,7 @@ INSERT INTO users (
 ) VALUES (
   gen_random_uuid(),
   'manager@ucg.co.tz',
-  '$2b$10$YQj3VzW8qH4Y0xF1nZ7Svu6BV8kX9Y5N0uA1MZ8qD3v5V7W9X1Y2Z', -- Test@123
+  '$2b$10$f28O19qOru2HTH/eXHc8e.IOEOrVj.Rkvy2oOsBu2M/8DNRIhiBK.', -- Test@123
   'Manager',
   'User',
   'MANAGER',
@@ -95,7 +95,7 @@ INSERT INTO users (
 ) VALUES (
   gen_random_uuid(),
   'operator@ucg.co.tz',
-  '$2b$10$YQj3VzW8qH4Y0xF1nZ7Svu6BV8kX9Y5N0uA1MZ8qD3v5V7W9X1Y2Z', -- Test@123
+  '$2b$10$f28O19qOru2HTH/eXHc8e.IOEOrVj.Rkvy2oOsBu2M/8DNRIhiBK.', -- Test@123
   'Operator',
   'User',
   'OPERATOR',
@@ -120,7 +120,7 @@ INSERT INTO users (
 ) VALUES (
   gen_random_uuid(),
   'viewer@ucg.co.tz',
-  '$2b$10$YQj3VzW8qH4Y0xF1nZ7Svu6BV8kX9Y5N0uA1MZ8qD3v5V7W9X1Y2Z', -- Test@123
+  '$2b$10$f28O19qOru2HTH/eXHc8e.IOEOrVj.Rkvy2oOsBu2M/8DNRIhiBK.', -- Test@123
   'Viewer',
   'User',
   'VIEWER',

@@ -11,12 +11,6 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
   }
 
   canActivate(context: ExecutionContext): boolean | Promise<boolean> | Observable<boolean> {
-    // TEMPORARY: Allow all routes without authentication
-    // TODO: Remove this and enable proper authentication before production
-    return true;
-
-    /*
-    // Uncomment below to re-enable authentication
     const request = context.switchToHttp().getRequest();
     const path = request.url;
 
@@ -36,6 +30,5 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     }
 
     return super.canActivate(context);
-    */
   }
 }
