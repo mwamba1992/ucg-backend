@@ -7,15 +7,18 @@ import {
   Query,
   Patch,
   UseGuards,
-  Request,
   HttpCode,
   HttpStatus,
+  Request,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { ReferenceService } from './reference.service';
 import { CreateReferenceDto } from './dto/create-reference.dto';
 import { BulkGenerateReferenceDto } from './dto/bulk-generate-reference.dto';
 import { QueryReferenceDto } from './dto/query-reference.dto';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { User } from '../user/entities/user.entity';
+import { ServiceProviderService } from '../service-provider/service-provider.service';
 
 /**
  * Service Provider Reference Controller
@@ -28,10 +31,26 @@ import { QueryReferenceDto } from './dto/query-reference.dto';
  */
 @ApiTags('Service Provider - References')
 @Controller('sp/references')
-// @UseGuards(JwtAuthGuard, SpAuthGuard) // TODO: Implement authentication guards
+// @UseGuards(JwtAuthGuard, SpAuthGuard) // TODO: Implement SP authentication guards
 @ApiBearerAuth()
 export class SpReferenceController {
-  constructor(private readonly referenceService: ReferenceService) {}
+  constructor(
+    private readonly referenceService: ReferenceService,
+  ) {}
+
+  /**
+   * NOTE: This controller is for Service Provider API access.
+   * Currently uses placeholder 'mock-sp-id' until proper SP authentication is implemented.
+   *
+   * TODO: Implement SpAuthGuard that:
+   * 1. Validates SP API key or SP JWT token
+   * 2. Adds serviceProviderId to request.user object
+   * 3. Replace all 'mock-sp-id' with req.user.serviceProviderId
+   *
+   * Service Providers should authenticate via:
+   * - API Key authentication (for external integrations), OR
+   * - Separate SP JWT tokens (different from admin user tokens)
+   */
 
   /**
    * Generate Single Reference

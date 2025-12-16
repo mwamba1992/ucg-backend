@@ -4,7 +4,6 @@ import {
   Post,
   Body,
   Param,
-  Request,
   HttpCode,
   HttpStatus,
   UseGuards,
@@ -16,6 +15,8 @@ import { CompleteTaskDto } from './dto/complete-task.dto';
 import { RejectWorkflowDto } from './dto/reject-workflow.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { User } from '../user/entities/user.entity';
 
 /**
  * Workflow Management Controller
@@ -90,9 +91,8 @@ export class WorkflowController {
       ],
     },
   })
-  async getMyTasks(@Request() req: any) {
-    const userId = req.user?.id || 'mock-user-id'; // TODO: Get from JWT
-    return await this.workflowService.getMyTasks(userId);
+  async getMyTasks(@CurrentUser() user: User) {
+    return await this.workflowService.getMyTasks(user.id);
   }
 
   /**
@@ -141,10 +141,9 @@ export class WorkflowController {
   async completeTask(
     @Param('taskId') taskId: string,
     @Body() dto: CompleteTaskDto,
-    @Request() req: any,
+    @CurrentUser() user: User,
   ) {
-    const userId = req.user?.id || 'mock-user-id'; // TODO: Get from JWT
-    return await this.workflowService.completeTask(taskId, userId, dto);
+    return await this.workflowService.completeTask(taskId, user.id, dto);
   }
 
   /**
@@ -268,10 +267,9 @@ export class WorkflowController {
   async rejectWorkflow(
     @Param('instanceId') instanceId: string,
     @Body() dto: RejectWorkflowDto,
-    @Request() req: any,
+    @CurrentUser() user: User,
   ) {
-    const userId = req.user?.id || 'mock-user-id'; // TODO: Get from JWT
-    return await this.workflowService.rejectWorkflow(instanceId, userId, dto.reason);
+    return await this.workflowService.rejectWorkflow(instanceId, user.id, dto.reason);
   }
 
   /**

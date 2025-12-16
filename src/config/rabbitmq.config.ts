@@ -26,12 +26,18 @@ export const RABBITMQ_QUEUES = {
   REFERENCE_NOTIFICATION: 'ucg.reference.notification',
   PAYMENT_PROCESSING: 'ucg.payment.processing',
   PAYMENT_NOTIFICATION: 'ucg.payment.notification',
+  MPESA_PAYMENT_PROCESSING: 'ucg.mpesa.payment.processing',
+  MPESA_CALLBACK: 'ucg.mpesa.callback',
+  MPESA_VALIDATION: 'ucg.mpesa.validation',
+  TIGOPESA_PAYMENT_PROCESSING: 'ucg.tigopesa.payment.processing',
 } as const;
 
 // Exchange names
 export const RABBITMQ_EXCHANGES = {
   REFERENCE: 'ucg.reference.exchange',
   PAYMENT: 'ucg.payment.exchange',
+  MPESA: 'ucg.mpesa.exchange',
+  TIGOPESA: 'ucg.tigopesa.exchange',
   DLX: 'ucg.dlx', // Dead Letter Exchange
 } as const;
 
@@ -43,4 +49,8 @@ export const RABBITMQ_ROUTING_KEYS = {
   REFERENCE_NOTIFY: 'reference.notify',
   PAYMENT_PROCESS: 'payment.process',
   PAYMENT_NOTIFY: 'payment.notify',
+  MPESA_PAYMENT_PROCESS: 'mpesa.payment.process',
+  MPESA_CALLBACK_SEND: 'mpesa.callback.send',
+  MPESA_VALIDATE: 'mpesa.validate',
+  TIGOPESA_PAYMENT_PROCESS: 'tigopesa.payment.process',
 } as const;

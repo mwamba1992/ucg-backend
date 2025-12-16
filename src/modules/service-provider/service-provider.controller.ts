@@ -1,35 +1,28 @@
 import {
-  Controller,
-  Get,
-  Post,
-  Body,
-  Patch,
-  Param,
-  Delete,
-  Query,
-  HttpCode,
-  HttpStatus,
-  UseGuards,
+    Body,
+    Controller,
+    Delete,
+    Get,
+    HttpCode,
+    HttpStatus,
+    Param,
+    Patch,
+    Post,
+    Query,
+    UseGuards,
 } from '@nestjs/common';
-import {
-  ApiTags,
-  ApiOperation,
-  ApiResponse,
-  ApiParam,
-  ApiQuery,
-  ApiBearerAuth,
-} from '@nestjs/swagger';
-import { ServiceProviderService } from './service-provider.service';
-import { CreateServiceProviderDto } from './dto/create-service-provider.dto';
-import { UpdateServiceProviderDto } from './dto/update-service-provider.dto';
-import { QueryServiceProviderDto } from './dto/query-service-provider.dto';
-import { ServiceProviderResponseDto } from './dto/service-provider-response.dto';
-import { CreateBankAccountDto } from './dto/bank-account.dto';
-import { UpdateBankAccountDto } from './dto/update-bank-account.dto';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
-import { UserRole } from '../user/entities/user.entity';
+import {ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags,} from '@nestjs/swagger';
+import {ServiceProviderService} from './service-provider.service';
+import {CreateServiceProviderDto} from './dto/create-service-provider.dto';
+import {UpdateServiceProviderDto} from './dto/update-service-provider.dto';
+import {QueryServiceProviderDto} from './dto/query-service-provider.dto';
+import {ServiceProviderResponseDto} from './dto/service-provider-response.dto';
+import {CreateBankAccountDto} from './dto/bank-account.dto';
+import {UpdateBankAccountDto} from './dto/update-bank-account.dto';
+import {JwtAuthGuard} from '../auth/guards/jwt-auth.guard';
+import {RolesGuard} from '../auth/guards/roles.guard';
+import {CurrentUser} from '../auth/decorators/current-user.decorator';
+import {User} from '../user/entities/user.entity';
 
 @ApiTags('Service Providers')
 @ApiBearerAuth()
@@ -125,10 +118,11 @@ export class ServiceProviderController {
   })
   @ApiResponse({ status: 404, description: 'Service provider not found' })
   @ApiResponse({ status: 400, description: 'Already approved' })
-  async approve(@Param('id') id: string) {
-    // TODO: Get admin user ID from JWT token
-    const approvedBy = 'admin-user-id'; // Temporary placeholder
-    return await this.serviceProviderService.approve(id, approvedBy);
+  async approve(
+    @Param('id') id: string,
+    @CurrentUser() user: User,
+  ) {
+    return await this.serviceProviderService.approve(id, user.id);
   }
 
   @Post(':id/reject')

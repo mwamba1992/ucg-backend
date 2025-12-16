@@ -49,7 +49,8 @@
     "reflect-metadata": "^0.1.13",
     "rxjs": "^7.8.1",
     "swagger-ui-express": "^5.0.1",
-    "typeorm": "^0.3.17"
+    "typeorm": "^0.3.17",
+    "xml2js": "^0.6.2"
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.10",
@@ -60,6 +61,7 @@
     "@types/jest": "^29.5.2",
     "@types/node": "^20.3.1",
     "@types/swagger-ui-express": "^4.1.8",
+    "@types/xml2js": "^0.4.14",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
     "@typescript-eslint/parser": "^6.0.0",
     "eslint": "^8.42.0",
