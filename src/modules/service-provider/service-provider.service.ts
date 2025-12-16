@@ -473,6 +473,18 @@ export class ServiceProviderService {
     // Verify SP exists
     await this.findOne(serviceProviderId);
 
+    // Check if account number already exists for this service provider
+    const existingAccount = await this.bankAccountRepository.findOne({
+      where: {
+        serviceProviderId,
+        accountNumber: createDto.accountNumber,
+      },
+    });
+
+    if (existingAccount) {
+      throw new ConflictException('Bank account number already exists for this service provider');
+    }
+
     // If this is marked as primary, unset other primary accounts
     if (createDto.isPrimary) {
       await this.bankAccountRepository.update(
@@ -504,6 +516,21 @@ export class ServiceProviderService {
     updateDto: UpdateBankAccountDto,
   ): Promise<ServiceProviderBankAccount> {
     const account = await this.getBankAccount(serviceProviderId, accountId);
+
+    // If account number is being updated, check for duplicates (excluding current account)
+    if (updateDto.accountNumber && updateDto.accountNumber !== account.accountNumber) {
+      const existingAccount = await this.bankAccountRepository.findOne({
+        where: {
+          serviceProviderId,
+          accountNumber: updateDto.accountNumber,
+          id: Not(accountId), // Exclude current account from the check
+        },
+      });
+
+      if (existingAccount) {
+        throw new ConflictException('Bank account number already exists for this service provider');
+      }
+    }
 
     // If setting as primary, unset other primary accounts
     if (updateDto.isPrimary === true) {
