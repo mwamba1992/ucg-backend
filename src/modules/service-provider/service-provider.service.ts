@@ -287,10 +287,14 @@ export class ServiceProviderService {
 
     // Update contact if provided
     if (updateDto.contact) {
-      await this.contactRepository.update(
-        { serviceProviderId: id },
-        updateDto.contact,
-      );
+      const existingContact = await this.contactRepository.findOne({
+        where: { serviceProviderId: id },
+      });
+
+      if (existingContact) {
+        Object.assign(existingContact, updateDto.contact);
+        await this.contactRepository.save(existingContact);
+      }
     }
 
     // Update bank accounts if provided (replaces all existing accounts)
@@ -310,10 +314,14 @@ export class ServiceProviderService {
 
     // Update settings if provided
     if (updateDto.settings) {
-      await this.settingsRepository.update(
-        { serviceProviderId: id },
-        updateDto.settings,
-      );
+      const existingSettings = await this.settingsRepository.findOne({
+        where: { serviceProviderId: id },
+      });
+
+      if (existingSettings) {
+        Object.assign(existingSettings, updateDto.settings);
+        await this.settingsRepository.save(existingSettings);
+      }
     }
 
     await this.serviceProviderRepository.save(serviceProvider);
