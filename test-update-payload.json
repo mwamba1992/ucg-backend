@@ -1,0 +1,40 @@
+{
+  "businessName": "JOEL SECONDARY SCHOOL",
+  "businessType": "SCHOOL",
+  "email": "joelgaitan1992@gmail.com",
+  "phoneNumber": "0753107301",
+  "contact": {
+    "fullName": "JOEL M GAITAN",
+    "phoneNumber": "0753107301",
+    "email": "joelgaitan1992@gmail.com",
+    "idNumber": "12121212121212121212121",
+    "position": "CEO"
+  },
+  "bankAccounts": [
+    {
+      "bankName": "CRDB",
+      "accountNumber": "12000000",
+      "accountName": "JOEL M GAITAN",
+      "branchName": "DODOMA",
+      "branchCode": "sasa",
+      "accountType": "SAVINGS",
+      "isPrimary": true
+    }
+  ],
+  "settings": {
+    "commissionRate": 2.5,
+    "settlementFrequency": "DAILY",
+    "autoSettlement": true,
+    "minimumSettlementAmount": 10000,
+    "dailyTransactionLimit": 1000000,
+    "dailyTransactionCount": 1000,
+    "emailNotifications": true,
+    "smsNotifications": true,
+    "apiRateLimit": 100
+  },
+  "registrationNumber": "T1200/101010",
+  "tinNumber": "122-009-100",
+  "physicalAddress": "kimara stop over",
+  "region": "DAR",
+  "district": "UBUNGO"
+}
