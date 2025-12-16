@@ -293,6 +293,21 @@ export class ServiceProviderService {
       );
     }
 
+    // Update bank accounts if provided (replaces all existing accounts)
+    if (updateDto.bankAccounts && updateDto.bankAccounts.length > 0) {
+      // Delete all existing bank accounts
+      await this.bankAccountRepository.delete({ serviceProviderId: id });
+
+      // Create new bank accounts
+      const bankAccounts = updateDto.bankAccounts.map((account) =>
+        this.bankAccountRepository.create({
+          ...account,
+          serviceProviderId: id,
+        }),
+      );
+      await this.bankAccountRepository.save(bankAccounts);
+    }
+
     // Update settings if provided
     if (updateDto.settings) {
       await this.settingsRepository.update(

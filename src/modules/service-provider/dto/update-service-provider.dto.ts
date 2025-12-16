@@ -1,8 +1,9 @@
 import { ApiPropertyOptional, PartialType } from '@nestjs/swagger';
-import { IsEnum, IsOptional, ValidateNested } from 'class-validator';
+import { IsArray, IsEnum, IsOptional, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { OnboardingStatus } from '../entities/service-provider.entity';
 import { CreateContactDto } from './contact.dto';
+import { CreateBankAccountDto } from './bank-account.dto';
 import { CreateSettingsDto } from './settings.dto';
 
 export class UpdateServiceProviderDto {
@@ -64,6 +65,17 @@ export class UpdateServiceProviderDto {
   @ValidateNested()
   @Type(() => CreateContactDto)
   contact?: CreateContactDto;
+
+  @ApiPropertyOptional({
+    description: 'Update bank accounts (replaces all existing accounts)',
+    type: [CreateBankAccountDto],
+    isArray: true,
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateBankAccountDto)
+  bankAccounts?: CreateBankAccountDto[];
 
   @ApiPropertyOptional({
     description: 'Update settings',
