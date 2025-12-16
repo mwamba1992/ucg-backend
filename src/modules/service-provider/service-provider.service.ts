@@ -305,6 +305,11 @@ export class ServiceProviderService {
       });
       this.logger.log(`✅ Main fields updated`);
 
+      // Save main entity FIRST to avoid cascade issues
+      this.logger.log(`💾 Saving main service provider entity...`);
+      await this.serviceProviderRepository.save(serviceProvider);
+      this.logger.log(`✅ Service provider saved successfully`);
+
       // Update contact if provided
       if (updateDto.contact) {
         this.logger.log(`👤 Updating contact information...`);
@@ -331,32 +336,17 @@ export class ServiceProviderService {
         await this.bankAccountRepository.delete({ serviceProviderId: id });
         this.logger.log(`✅ Existing accounts deleted`);
 
-        // Create new bank accounts using .create() to ensure proper entity instantiation
+        // Create new bank accounts (same pattern as in create method)
         this.logger.log(`➕ Creating new bank accounts...`);
-        const bankAccountsToSave = [];
+        const bankAccounts = updateDto.bankAccounts.map((account) =>
+          this.bankAccountRepository.create({
+            ...account,
+            serviceProviderId: id,
+          }),
+        );
 
-        for (const accountDto of updateDto.bankAccounts) {
-          // Extract only the fields we need, excluding any id
-          const { id: _, ...accountData } = accountDto as any;
-
-          // Use .create() to properly instantiate the entity with only valid fields
-          const newAccount = this.bankAccountRepository.create({
-            bankName: accountData.bankName,
-            accountNumber: accountData.accountNumber,
-            accountName: accountData.accountName,
-            branchName: accountData.branchName,
-            branchCode: accountData.branchCode,
-            accountType: accountData.accountType,
-            isPrimary: accountData.isPrimary,
-            swiftCode: accountData.swiftCode,
-            serviceProviderId: id, // Explicitly set the foreign key
-          });
-
-          bankAccountsToSave.push(newAccount);
-        }
-
-        this.logger.debug(`Bank accounts to save: ${JSON.stringify(bankAccountsToSave)}`);
-        await this.bankAccountRepository.save(bankAccountsToSave);
+        this.logger.debug(`Bank accounts to save: ${bankAccounts.length} accounts`);
+        await this.bankAccountRepository.save(bankAccounts);
         this.logger.log(`✅ Bank accounts created successfully`);
       }
 
@@ -376,10 +366,6 @@ export class ServiceProviderService {
           this.logger.warn(`⚠️ No existing settings found for SP: ${id}`);
         }
       }
-
-      this.logger.log(`💾 Saving main service provider entity...`);
-      await this.serviceProviderRepository.save(serviceProvider);
-      this.logger.log(`✅ Service provider saved successfully`);
 
       this.logger.log(`📤 Fetching updated service provider with relations...`);
       const result = await this.findOne(id);
