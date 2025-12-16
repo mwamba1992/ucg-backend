@@ -339,7 +339,7 @@ export class ServiceProviderService {
           // Extract only the fields we need, excluding any id
           const { id: _, ...accountData } = accountDto as any;
 
-          // Use .create() to properly instantiate the entity
+          // Use .create() to properly instantiate the entity with only valid fields
           const newAccount = this.bankAccountRepository.create({
             bankName: accountData.bankName,
             accountNumber: accountData.accountNumber,
@@ -349,7 +349,6 @@ export class ServiceProviderService {
             accountType: accountData.accountType,
             isPrimary: accountData.isPrimary,
             swiftCode: accountData.swiftCode,
-            currency: accountData.currency,
             serviceProviderId: id, // Explicitly set the foreign key
           });
 
