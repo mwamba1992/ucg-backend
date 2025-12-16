@@ -331,18 +331,33 @@ export class ServiceProviderService {
         await this.bankAccountRepository.delete({ serviceProviderId: id });
         this.logger.log(`✅ Existing accounts deleted`);
 
-        // Create new bank accounts (exclude id to force creation, not update)
+        // Create new bank accounts using .create() to ensure proper entity instantiation
         this.logger.log(`➕ Creating new bank accounts...`);
-        const bankAccounts = updateDto.bankAccounts.map((account) => {
-          // Remove id if present to ensure new records are created
-          const { id: accountId, ...accountData } = account as any;
-          return {
-            ...accountData,
-            serviceProviderId: id,
-          };
-        });
-        this.logger.debug(`Bank accounts to save: ${JSON.stringify(bankAccounts)}`);
-        await this.bankAccountRepository.save(bankAccounts);
+        const bankAccountsToSave = [];
+
+        for (const accountDto of updateDto.bankAccounts) {
+          // Extract only the fields we need, excluding any id
+          const { id: _, ...accountData } = accountDto as any;
+
+          // Use .create() to properly instantiate the entity
+          const newAccount = this.bankAccountRepository.create({
+            bankName: accountData.bankName,
+            accountNumber: accountData.accountNumber,
+            accountName: accountData.accountName,
+            branchName: accountData.branchName,
+            branchCode: accountData.branchCode,
+            accountType: accountData.accountType,
+            isPrimary: accountData.isPrimary,
+            swiftCode: accountData.swiftCode,
+            currency: accountData.currency,
+            serviceProviderId: id, // Explicitly set the foreign key
+          });
+
+          bankAccountsToSave.push(newAccount);
+        }
+
+        this.logger.debug(`Bank accounts to save: ${JSON.stringify(bankAccountsToSave)}`);
+        await this.bankAccountRepository.save(bankAccountsToSave);
         this.logger.log(`✅ Bank accounts created successfully`);
       }
 
