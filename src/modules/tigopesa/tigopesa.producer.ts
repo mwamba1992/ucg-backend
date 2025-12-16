@@ -39,19 +39,12 @@ export class TigoPesaProducer {
   }
 
   /**
-   * Connect to RabbitMQ on module initialization
+   * NOTE: We don't call connect() explicitly because:
+   * 1. We only use emit() (fire-and-forget), not send() (RPC)
+   * 2. Calling connect() creates a reply queue for RPC which we don't need
+   * 3. The client will auto-connect on first emit()
+   * 4. This avoids the 406 PRECONDITION_FAILED error with reply queues
    */
-  async onModuleInit() {
-    try {
-      await this.tigopesaClient.connect();
-      this.logger.log('TigoPesa producer connected to RabbitMQ');
-    } catch (error) {
-      this.logger.error(
-        `Failed to connect TigoPesa producer to RabbitMQ: ${error.message}`,
-        error.stack,
-      );
-    }
-  }
 
   /**
    * Disconnect from RabbitMQ on module destruction
