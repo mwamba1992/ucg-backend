@@ -335,11 +335,11 @@ export class ServiceProviderService {
         this.logger.log(`➕ Creating new bank accounts...`);
         const bankAccounts = updateDto.bankAccounts.map((account) => {
           // Remove id if present to ensure new records are created
-          const { id: _, ...accountData } = account as any;
-          return this.bankAccountRepository.create({
+          const { id: accountId, ...accountData } = account as any;
+          return {
             ...accountData,
             serviceProviderId: id,
-          });
+          };
         });
         this.logger.debug(`Bank accounts to save: ${JSON.stringify(bankAccounts)}`);
         await this.bankAccountRepository.save(bankAccounts);
