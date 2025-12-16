@@ -331,14 +331,16 @@ export class ServiceProviderService {
         await this.bankAccountRepository.delete({ serviceProviderId: id });
         this.logger.log(`✅ Existing accounts deleted`);
 
-        // Create new bank accounts
+        // Create new bank accounts (exclude id to force creation, not update)
         this.logger.log(`➕ Creating new bank accounts...`);
-        const bankAccounts = updateDto.bankAccounts.map((account) =>
-          this.bankAccountRepository.create({
-            ...account,
+        const bankAccounts = updateDto.bankAccounts.map((account) => {
+          // Remove id if present to ensure new records are created
+          const { id: _, ...accountData } = account as any;
+          return this.bankAccountRepository.create({
+            ...accountData,
             serviceProviderId: id,
-          }),
-        );
+          });
+        });
         this.logger.debug(`Bank accounts to save: ${JSON.stringify(bankAccounts)}`);
         await this.bankAccountRepository.save(bankAccounts);
         this.logger.log(`✅ Bank accounts created successfully`);
