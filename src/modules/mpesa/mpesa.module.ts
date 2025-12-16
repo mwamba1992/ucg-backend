@@ -21,6 +21,7 @@ import { CBSModule } from '../cbs/cbs.module';
 
     // RabbitMQ Client for M-Pesa queues
     ClientsModule.registerAsync([
+      // Payment Processing Queue
       {
         name: 'MPESA_SERVICE',
         imports: [ConfigModule],
@@ -37,6 +38,27 @@ import { CBSModule } from '../cbs/cbs.module';
               },
             },
             prefetchCount: 1, // Process one message at a time
+            noAck: false, // Manual acknowledgment
+          },
+        }),
+        inject: [ConfigService],
+      },
+      // Callback Queue
+      {
+        name: 'MPESA_CALLBACK_SERVICE',
+        imports: [ConfigModule],
+        useFactory: async (configService: ConfigService) => ({
+          transport: Transport.RMQ,
+          options: {
+            urls: [configService.get<string>('RABBITMQ_URL')],
+            queue: RABBITMQ_QUEUES.MPESA_CALLBACK,
+            queueOptions: {
+              durable: true,
+              arguments: {
+                'x-message-ttl': 3600000, // 1 hour message TTL
+              },
+            },
+            prefetchCount: 1,
             noAck: false, // Manual acknowledgment
           },
         }),
