@@ -256,14 +256,17 @@ export class ServiceProviderService {
   ): Promise<ServiceProvider> {
     const serviceProvider = await this.findOne(id);
 
-    // If email is being updated, check for duplicates
+    // If email is being updated, check for duplicates (excluding current SP)
     if (updateDto.email && updateDto.email !== serviceProvider.email) {
       const existingEmail = await this.serviceProviderRepository.findOne({
-        where: { email: updateDto.email },
+        where: {
+          email: updateDto.email,
+          id: Not(id), // Exclude current service provider from the check
+        },
       });
 
       if (existingEmail) {
-        throw new ConflictException('Email already in use');
+        throw new ConflictException('Email already in use by another service provider');
       }
     }
 
