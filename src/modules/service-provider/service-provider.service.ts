@@ -254,79 +254,125 @@ export class ServiceProviderService {
     id: string,
     updateDto: UpdateServiceProviderDto,
   ): Promise<ServiceProvider> {
-    const serviceProvider = await this.findOne(id);
+    this.logger.log(`🔄 Starting update for Service Provider: ${id}`);
+    this.logger.debug(`Update DTO: ${JSON.stringify(updateDto)}`);
 
-    // If email is being updated, check for duplicates (excluding current SP)
-    if (updateDto.email && updateDto.email !== serviceProvider.email) {
-      const existingEmail = await this.serviceProviderRepository.findOne({
-        where: {
-          email: updateDto.email,
-          id: Not(id), // Exclude current service provider from the check
-        },
+    try {
+      // Fetch without relations to avoid cascade issues
+      this.logger.log(`📥 Fetching service provider without relations...`);
+      const serviceProvider = await this.serviceProviderRepository.findOne({
+        where: { id },
       });
 
-      if (existingEmail) {
-        throw new ConflictException('Email already in use by another service provider');
+      if (!serviceProvider) {
+        this.logger.error(`❌ Service Provider with ID ${id} not found`);
+        throw new NotFoundException(`Service Provider with ID ${id} not found`);
       }
-    }
 
-    // Update main entity fields
-    Object.assign(serviceProvider, {
-      businessName: updateDto.businessName,
-      businessType: updateDto.businessType,
-      registrationNumber: updateDto.registrationNumber,
-      tinNumber: updateDto.tinNumber,
-      phoneNumber: updateDto.phoneNumber,
-      email: updateDto.email,
-      physicalAddress: updateDto.physicalAddress,
-      region: updateDto.region,
-      district: updateDto.district,
-      status: updateDto.status,
-      rejectionReason: updateDto.rejectionReason,
-    });
+      this.logger.log(`✅ Service Provider found: ${serviceProvider.businessName}`);
 
-    // Update contact if provided
-    if (updateDto.contact) {
-      const existingContact = await this.contactRepository.findOne({
-        where: { serviceProviderId: id },
+      // If email is being updated, check for duplicates (excluding current SP)
+      if (updateDto.email && updateDto.email !== serviceProvider.email) {
+        this.logger.log(`📧 Checking email uniqueness: ${updateDto.email}`);
+        const existingEmail = await this.serviceProviderRepository.findOne({
+          where: {
+            email: updateDto.email,
+            id: Not(id), // Exclude current service provider from the check
+          },
+        });
+
+        if (existingEmail) {
+          this.logger.error(`❌ Email already in use: ${updateDto.email}`);
+          throw new ConflictException('Email already in use by another service provider');
+        }
+        this.logger.log(`✅ Email is unique`);
+      }
+
+      // Update main entity fields
+      this.logger.log(`📝 Updating main entity fields...`);
+      Object.assign(serviceProvider, {
+        businessName: updateDto.businessName,
+        businessType: updateDto.businessType,
+        registrationNumber: updateDto.registrationNumber,
+        tinNumber: updateDto.tinNumber,
+        phoneNumber: updateDto.phoneNumber,
+        email: updateDto.email,
+        physicalAddress: updateDto.physicalAddress,
+        region: updateDto.region,
+        district: updateDto.district,
+        status: updateDto.status,
+        rejectionReason: updateDto.rejectionReason,
       });
+      this.logger.log(`✅ Main fields updated`);
 
-      if (existingContact) {
-        Object.assign(existingContact, updateDto.contact);
-        await this.contactRepository.save(existingContact);
+      // Update contact if provided
+      if (updateDto.contact) {
+        this.logger.log(`👤 Updating contact information...`);
+        const existingContact = await this.contactRepository.findOne({
+          where: { serviceProviderId: id },
+        });
+
+        if (existingContact) {
+          this.logger.log(`📝 Contact found, updating: ${existingContact.id}`);
+          Object.assign(existingContact, updateDto.contact);
+          await this.contactRepository.save(existingContact);
+          this.logger.log(`✅ Contact updated successfully`);
+        } else {
+          this.logger.warn(`⚠️ No existing contact found for SP: ${id}`);
+        }
       }
-    }
 
-    // Update bank accounts if provided (replaces all existing accounts)
-    if (updateDto.bankAccounts && updateDto.bankAccounts.length > 0) {
-      // Delete all existing bank accounts
-      await this.bankAccountRepository.delete({ serviceProviderId: id });
+      // Update bank accounts if provided (replaces all existing accounts)
+      if (updateDto.bankAccounts && updateDto.bankAccounts.length > 0) {
+        this.logger.log(`🏦 Updating bank accounts (${updateDto.bankAccounts.length} accounts)...`);
 
-      // Create new bank accounts
-      const bankAccounts = updateDto.bankAccounts.map((account) =>
-        this.bankAccountRepository.create({
-          ...account,
-          serviceProviderId: id,
-        }),
-      );
-      await this.bankAccountRepository.save(bankAccounts);
-    }
+        // Delete all existing bank accounts
+        this.logger.log(`🗑️ Deleting existing bank accounts...`);
+        await this.bankAccountRepository.delete({ serviceProviderId: id });
+        this.logger.log(`✅ Existing accounts deleted`);
 
-    // Update settings if provided
-    if (updateDto.settings) {
-      const existingSettings = await this.settingsRepository.findOne({
-        where: { serviceProviderId: id },
-      });
-
-      if (existingSettings) {
-        Object.assign(existingSettings, updateDto.settings);
-        await this.settingsRepository.save(existingSettings);
+        // Create new bank accounts
+        this.logger.log(`➕ Creating new bank accounts...`);
+        const bankAccounts = updateDto.bankAccounts.map((account) =>
+          this.bankAccountRepository.create({
+            ...account,
+            serviceProviderId: id,
+          }),
+        );
+        this.logger.debug(`Bank accounts to save: ${JSON.stringify(bankAccounts)}`);
+        await this.bankAccountRepository.save(bankAccounts);
+        this.logger.log(`✅ Bank accounts created successfully`);
       }
+
+      // Update settings if provided
+      if (updateDto.settings) {
+        this.logger.log(`⚙️ Updating settings...`);
+        const existingSettings = await this.settingsRepository.findOne({
+          where: { serviceProviderId: id },
+        });
+
+        if (existingSettings) {
+          this.logger.log(`📝 Settings found, updating: ${existingSettings.id}`);
+          Object.assign(existingSettings, updateDto.settings);
+          await this.settingsRepository.save(existingSettings);
+          this.logger.log(`✅ Settings updated successfully`);
+        } else {
+          this.logger.warn(`⚠️ No existing settings found for SP: ${id}`);
+        }
+      }
+
+      this.logger.log(`💾 Saving main service provider entity...`);
+      await this.serviceProviderRepository.save(serviceProvider);
+      this.logger.log(`✅ Service provider saved successfully`);
+
+      this.logger.log(`📤 Fetching updated service provider with relations...`);
+      const result = await this.findOne(id);
+      this.logger.log(`✅ Update completed successfully for: ${id}`);
+      return result;
+    } catch (error) {
+      this.logger.error(`❌ Error updating service provider ${id}:`, error.stack);
+      throw error;
     }
-
-    await this.serviceProviderRepository.save(serviceProvider);
-
-    return await this.findOne(id);
   }
 
   /**
