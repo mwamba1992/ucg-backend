@@ -102,7 +102,7 @@ export class SpPaymentController {
     // Build query to get payments for this service provider's references
     const queryBuilder = this.paymentRepo
       .createQueryBuilder('payment')
-      .leftJoin('payment_reference', 'reference', 'payment.referenceNumber = reference.referenceNumber')
+      .leftJoin('payment_references', 'reference', 'payment.referenceNumber = reference.referenceNumber')
       .where('reference.serviceProviderId = :serviceProviderId', { serviceProviderId });
 
     // Apply filters
@@ -207,7 +207,7 @@ export class SpPaymentController {
     // Build base query
     const queryBuilder = this.paymentRepo
       .createQueryBuilder('payment')
-      .leftJoin('payment_reference', 'reference', 'payment.referenceNumber = reference.referenceNumber')
+      .leftJoin('payment_references', 'reference', 'payment.referenceNumber = reference.referenceNumber')
       .where('reference.serviceProviderId = :serviceProviderId', { serviceProviderId });
 
     // Apply date filters if provided
@@ -428,7 +428,7 @@ export class SpPaymentController {
     // Get payment with reference relationship
     const payment = await this.paymentRepo
       .createQueryBuilder('payment')
-      .leftJoin('payment_reference', 'reference', 'payment.referenceNumber = reference.referenceNumber')
+      .leftJoin('payment_references', 'reference', 'payment.referenceNumber = reference.referenceNumber')
       .where('payment.id = :paymentId', { paymentId })
       .andWhere('reference.serviceProviderId = :serviceProviderId', { serviceProviderId })
       .getOne();
