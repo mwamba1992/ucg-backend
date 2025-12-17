@@ -370,89 +370,125 @@ export class AuthService {
     message: string;
     data: any;
   }> {
+    // Log the incoming registration payload for troubleshooting
+    this.logger.log('SP Registration Request Received');
+    this.logger.log(`Payload: ${JSON.stringify(registerDto, null, 2)}`);
+
     // Check if service provider with email already exists
     const existingSp = await this.serviceProviderRepository.findOne({
       where: { email: registerDto.email },
     });
 
     if (existingSp) {
+      this.logger.warn(`Registration failed: Email already exists - ${registerDto.email}`);
       throw new ConflictException('Service provider with this email already exists');
     }
 
     // Generate SP code from business name (first 3 letters)
     const spCode = this.generateSpCode(registerDto.businessName);
+    this.logger.log(`Generated SP Code: ${spCode}`);
 
-    // Create service provider entity
-    const serviceProvider = this.serviceProviderRepository.create({
-      businessName: registerDto.businessName,
-      businessType: registerDto.businessType,
-      registrationNumber: registerDto.registrationNumber,
-      tinNumber: registerDto.tinNumber,
-      phoneNumber: registerDto.phoneNumber,
-      email: registerDto.email,
-      physicalAddress: registerDto.physicalAddress,
-      region: registerDto.region,
-      district: registerDto.district,
-      spCode,
-      status: OnboardingStatus.PENDING,
-      isActive: false,
-    });
-
-    await this.serviceProviderRepository.save(serviceProvider);
-
-    // Create contact
-    if (registerDto.contact) {
-      const contact = this.contactRepository.create({
-        ...registerDto.contact,
-        serviceProvider,
+    try {
+      // Create service provider entity
+      this.logger.log('Creating Service Provider entity...');
+      const serviceProvider = this.serviceProviderRepository.create({
+        businessName: registerDto.businessName,
+        businessType: registerDto.businessType,
+        registrationNumber: registerDto.registrationNumber,
+        tinNumber: registerDto.tinNumber,
+        phoneNumber: registerDto.phoneNumber,
+        email: registerDto.email,
+        physicalAddress: registerDto.physicalAddress,
+        region: registerDto.region,
+        district: registerDto.district,
+        spCode,
+        status: OnboardingStatus.PENDING,
+        isActive: false,
       });
-      await this.contactRepository.save(contact);
-    }
 
-    // Create bank accounts
-    if (registerDto.bankAccounts && registerDto.bankAccounts.length > 0) {
-      const bankAccounts = registerDto.bankAccounts.map((account: any, index: number) =>
-        this.bankAccountRepository.create({
-          ...account,
+      await this.serviceProviderRepository.save(serviceProvider);
+      this.logger.log(`Service Provider created with ID: ${serviceProvider.id}`);
+
+      // Create contact
+      if (registerDto.contact) {
+        this.logger.log('Creating Contact...');
+        this.logger.log(`Contact data: ${JSON.stringify(registerDto.contact, null, 2)}`);
+
+        const contact = this.contactRepository.create({
+          ...registerDto.contact,
           serviceProvider,
-          isPrimary: index === 0, // First account is primary
-        })
-      );
-      await this.bankAccountRepository.save(bankAccounts);
-    }
+        });
 
-    // Create settings
-    if (registerDto.settings) {
-      const settings = this.settingsRepository.create({
-        ...registerDto.settings,
-        serviceProvider,
-      });
-      await this.settingsRepository.save(settings);
-    } else {
-      // Create default settings
-      const defaultSettings = this.settingsRepository.create({
-        serviceProvider,
-        commissionRate: 2.5,
-        settlementFrequency: SettlementFrequency.DAILY,
-        autoSettlement: false,
-      });
-      await this.settingsRepository.save(defaultSettings);
-    }
+        this.logger.log(`Contact entity prepared: ${JSON.stringify({
+          fullName: contact.fullName,
+          email: contact.email,
+          phoneNumber: contact.phoneNumber,
+          position: contact.position,
+        }, null, 2)}`);
 
-    return {
-      success: true,
-      message: 'Registration successful. Your account is pending approval. You will be notified once approved.',
-      data: {
-        id: serviceProvider.id,
-        spCode: serviceProvider.spCode,
-        businessName: serviceProvider.businessName,
-        businessType: serviceProvider.businessType,
-        email: serviceProvider.email,
-        phoneNumber: serviceProvider.phoneNumber,
-        status: serviceProvider.status,
-        isActive: serviceProvider.isActive,
-      },
-    };
+        await this.contactRepository.save(contact);
+        this.logger.log('Contact created successfully');
+      }
+
+      // Create bank accounts
+      if (registerDto.bankAccounts && registerDto.bankAccounts.length > 0) {
+        this.logger.log(`Creating ${registerDto.bankAccounts.length} bank account(s)...`);
+        const bankAccounts = registerDto.bankAccounts.map((account: any, index: number) =>
+          this.bankAccountRepository.create({
+            ...account,
+            serviceProvider,
+            isPrimary: index === 0, // First account is primary
+          })
+        );
+        await this.bankAccountRepository.save(bankAccounts);
+        this.logger.log('Bank accounts created successfully');
+      }
+
+      // Create settings
+      if (registerDto.settings) {
+        this.logger.log('Creating custom settings...');
+        const settings = this.settingsRepository.create({
+          ...registerDto.settings,
+          serviceProvider,
+        });
+        await this.settingsRepository.save(settings);
+        this.logger.log('Settings created successfully');
+      } else {
+        this.logger.log('Creating default settings...');
+        const defaultSettings = this.settingsRepository.create({
+          serviceProvider,
+          commissionRate: 2.5,
+          settlementFrequency: SettlementFrequency.DAILY,
+          autoSettlement: false,
+        });
+        await this.settingsRepository.save(defaultSettings);
+        this.logger.log('Default settings created successfully');
+      }
+
+      this.logger.log(`SP Registration completed successfully for: ${serviceProvider.email}`);
+
+      return {
+        success: true,
+        message: 'Registration successful. Your account is pending approval. You will be notified once approved.',
+        data: {
+          id: serviceProvider.id,
+          spCode: serviceProvider.spCode,
+          businessName: serviceProvider.businessName,
+          businessType: serviceProvider.businessType,
+          email: serviceProvider.email,
+          phoneNumber: serviceProvider.phoneNumber,
+          status: serviceProvider.status,
+          isActive: serviceProvider.isActive,
+        },
+      };
+    } catch (error) {
+      this.logger.error('SP Registration failed with error:', error);
+      this.logger.error(`Error details: ${error.message}`);
+      if (error.detail) {
+        this.logger.error(`Database error detail: ${error.detail}`);
+      }
+      throw error;
+    }
   }
 
   /**

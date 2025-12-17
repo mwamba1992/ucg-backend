@@ -155,7 +155,13 @@ export class AuthController {
   @Post('sp/register')
   @ApiOperation({
     summary: 'Self-registration for Service Providers',
-    description: 'Register a new service provider. The account will be in PENDING status and requires admin approval before login.',
+    description: `Register a new service provider. The account will be in PENDING status and requires admin approval before login.
+
+Required fields:
+- businessName, businessType, email, phoneNumber
+- contact.fullName (not firstName/lastName - use full name)
+- contact.phoneNumber, contact.email
+- At least one bank account with: bankName, accountNumber, accountName`,
   })
   @ApiResponse({
     status: 201,
