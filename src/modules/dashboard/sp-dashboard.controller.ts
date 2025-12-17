@@ -8,6 +8,9 @@ import {
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { DashboardService } from './dashboard.service';
 import { SpJwtAuthGuard } from '../auth/guards/sp-jwt-auth.guard';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { ServiceProvider } from '../service-provider/entities/service-provider.entity';
 
 /**
  * Service Provider Dashboard Controller
@@ -22,7 +25,11 @@ import { SpJwtAuthGuard } from '../auth/guards/sp-jwt-auth.guard';
 @UseGuards(SpJwtAuthGuard)
 @ApiBearerAuth()
 export class SpDashboardController {
-  constructor(private readonly dashboardService: DashboardService) {}
+  constructor(
+    private readonly dashboardService: DashboardService,
+    @InjectRepository(ServiceProvider)
+    private readonly serviceProviderRepository: Repository<ServiceProvider>,
+  ) {}
 
   /**
    * Get Dashboard Overview
@@ -61,11 +68,11 @@ export class SpDashboardController {
   ) {
     const serviceProviderId = req.user.serviceProviderId;
 
-    const overview = await this.dashboardService.getOverview(
+    const overview = await this.dashboardService.getOverview({
       serviceProviderId,
-      startDate,
-      endDate,
-    );
+      startDate: startDate ? new Date(startDate) : undefined,
+      endDate: endDate ? new Date(endDate) : undefined,
+    });
 
     return {
       success: true,
@@ -115,12 +122,11 @@ export class SpDashboardController {
   ) {
     const serviceProviderId = req.user.serviceProviderId;
 
-    const trends = await this.dashboardService.getTrends(
+    const trends = await this.dashboardService.getDailyTrends({
       serviceProviderId,
-      period,
-      startDate,
-      endDate,
-    );
+      startDate: startDate ? new Date(startDate) : undefined,
+      endDate: endDate ? new Date(endDate) : undefined,
+    });
 
     return {
       success: true,
@@ -168,62 +174,11 @@ export class SpDashboardController {
   ) {
     const serviceProviderId = req.user.serviceProviderId;
 
-    const analytics = await this.dashboardService.getReferenceAnalytics(
+    const analytics = await this.dashboardService.getReferenceAnalytics({
       serviceProviderId,
-      startDate,
-      endDate,
-    );
-
-    return {
-      success: true,
-      data: analytics,
-    };
-  }
-
-  /**
-   * Get Payment Analytics
-   *
-   * GET /api/v1/sp/dashboard/analytics/payments
-   */
-  @Get('analytics/payments')
-  @ApiOperation({
-    summary: 'Get payment analytics',
-    description: 'Get detailed analytics about payments (payment methods, success rates, amounts, etc.).',
-  })
-  @ApiQuery({ name: 'startDate', required: false })
-  @ApiQuery({ name: 'endDate', required: false })
-  @ApiResponse({
-    status: 200,
-    description: 'Payment analytics retrieved',
-    schema: {
-      example: {
-        success: true,
-        data: {
-          paymentMethodBreakdown: {
-            MPESA: { count: 450, amount: 22500000 },
-            TIGOPESA: { count: 250, amount: 12500000 },
-            AIRTEL: { count: 100, amount: 5000000 },
-          },
-          successRate: 98.5,
-          averagePaymentAmount: 50000,
-          peakHours: [9, 10, 14, 15],
-        },
-      },
-    },
-  })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  async getPaymentAnalytics(
-    @Query('startDate') startDate?: string,
-    @Query('endDate') endDate?: string,
-    @Request() req?: any,
-  ) {
-    const serviceProviderId = req.user.serviceProviderId;
-
-    const analytics = await this.dashboardService.getPaymentAnalytics(
-      serviceProviderId,
-      startDate,
-      endDate,
-    );
+      startDate: startDate ? new Date(startDate) : undefined,
+      endDate: endDate ? new Date(endDate) : undefined,
+    });
 
     return {
       success: true,
@@ -267,13 +222,29 @@ export class SpDashboardController {
   async getProfile(@Request() req: any) {
     const serviceProviderId = req.user.serviceProviderId;
 
-    const profile = await this.dashboardService.getServiceProviderProfile(
-      serviceProviderId,
-    );
+    const serviceProvider = await this.serviceProviderRepository.findOne({
+      where: { id: serviceProviderId },
+      relations: ['contact', 'bankAccounts', 'settings'],
+    });
 
     return {
       success: true,
-      data: profile,
+      data: {
+        id: serviceProvider.id,
+        spCode: serviceProvider.spCode,
+        businessName: serviceProvider.businessName,
+        businessType: serviceProvider.businessType,
+        email: serviceProvider.email,
+        phoneNumber: serviceProvider.phoneNumber,
+        physicalAddress: serviceProvider.physicalAddress,
+        region: serviceProvider.region,
+        district: serviceProvider.district,
+        status: serviceProvider.status,
+        isActive: serviceProvider.isActive,
+        contact: serviceProvider.contact,
+        bankAccounts: serviceProvider.bankAccounts,
+        settings: serviceProvider.settings,
+      },
     };
   }
 }
