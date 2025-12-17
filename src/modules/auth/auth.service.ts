@@ -419,12 +419,7 @@ export class AuthService {
           serviceProvider,
         });
 
-        this.logger.log(`Contact entity prepared: ${JSON.stringify({
-          fullName: contact.fullName,
-          email: contact.email,
-          phoneNumber: contact.phoneNumber,
-          position: contact.position,
-        }, null, 2)}`);
+        this.logger.log(`Contact entity prepared for: ${registerDto.contact.fullName}`);
 
         await this.contactRepository.save(contact);
         this.logger.log('Contact created successfully');
