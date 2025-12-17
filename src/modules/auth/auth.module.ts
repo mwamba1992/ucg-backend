@@ -1,4 +1,4 @@
-import { Module} from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
@@ -9,6 +9,9 @@ import { AuthController } from './auth.controller';
 import { UserModule } from '../user/user.module';
 import { User } from '../user/entities/user.entity';
 import { ServiceProvider } from '../service-provider/entities/service-provider.entity';
+import { ServiceProviderContact } from '../service-provider/entities/service-provider-contact.entity';
+import { ServiceProviderBankAccount } from '../service-provider/entities/service-provider-bank-account.entity';
+import { ServiceProviderSettings } from '../service-provider/entities/service-provider-settings.entity';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { SpJwtStrategy } from './strategies/sp-jwt.strategy';
 import { LocalStrategy } from './strategies/local.strategy';
@@ -19,7 +22,13 @@ import { NotificationModule } from '../notification/notification.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, ServiceProvider]),
+    TypeOrmModule.forFeature([
+      User,
+      ServiceProvider,
+      ServiceProviderContact,
+      ServiceProviderBankAccount,
+      ServiceProviderSettings,
+    ]),
     UserModule,
     PassportModule,
     NotificationModule,

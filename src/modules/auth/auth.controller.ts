@@ -147,4 +147,43 @@ export class AuthController {
   }> {
     return await this.authService.spLogin(loginDto);
   }
+
+  /**
+   * Service Provider Registration
+   */
+  @Public()
+  @Post('sp/register')
+  @ApiOperation({
+    summary: 'Self-registration for Service Providers',
+    description: 'Register a new service provider. The account will be in PENDING status and requires admin approval before login.',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Service Provider registration successful. Account pending approval.',
+    schema: {
+      example: {
+        success: true,
+        message: 'Registration successful. Your account is pending approval.',
+        data: {
+          id: '550e8400-e29b-41d4-a716-446655440000',
+          spCode: 'MWA',
+          businessName: 'Mwanga Secondary School',
+          businessType: 'SCHOOL',
+          email: 'admin@mwanga.school.tz',
+          phoneNumber: '+255712345678',
+          status: 'PENDING',
+          isActive: false,
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Bad request - validation failed' })
+  @ApiResponse({ status: 409, description: 'Service provider with this email already exists' })
+  async spRegister(@Body() registerDto: any): Promise<{
+    success: boolean;
+    message: string;
+    data: any;
+  }> {
+    return await this.authService.spRegister(registerDto);
+  }
 }

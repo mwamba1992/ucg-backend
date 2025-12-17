@@ -12,7 +12,10 @@ import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { UserService } from '../user/user.service';
 import { User, UserStatus, UserRole } from '../user/entities/user.entity';
-import { ServiceProvider, OnboardingStatus } from '../service-provider/entities/service-provider.entity';
+import { ServiceProvider, OnboardingStatus, ServiceProviderType } from '../service-provider/entities/service-provider.entity';
+import { ServiceProviderContact } from '../service-provider/entities/service-provider-contact.entity';
+import { ServiceProviderBankAccount } from '../service-provider/entities/service-provider-bank-account.entity';
+import { ServiceProviderSettings, SettlementFrequency } from '../service-provider/entities/service-provider-settings.entity';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
@@ -35,6 +38,12 @@ export class AuthService {
     private readonly httpService: HttpService,
     @InjectRepository(ServiceProvider)
     private readonly serviceProviderRepository: Repository<ServiceProvider>,
+    @InjectRepository(ServiceProviderContact)
+    private readonly contactRepository: Repository<ServiceProviderContact>,
+    @InjectRepository(ServiceProviderBankAccount)
+    private readonly bankAccountRepository: Repository<ServiceProviderBankAccount>,
+    @InjectRepository(ServiceProviderSettings)
+    private readonly settingsRepository: Repository<ServiceProviderSettings>,
   ) {
     this.cbsApiUrl = this.configService.get<string>('CBS_API_URL');
     this.clientId = this.configService.get<string>('CBS_CLIENT_ID');
@@ -350,6 +359,112 @@ export class AuthService {
       accessToken,
       refreshToken,
     };
+  }
+
+  /**
+   * Service Provider Self-Registration
+   * Allows service providers to register themselves for approval
+   */
+  async spRegister(registerDto: any): Promise<{
+    success: boolean;
+    message: string;
+    data: any;
+  }> {
+    // Check if service provider with email already exists
+    const existingSp = await this.serviceProviderRepository.findOne({
+      where: { email: registerDto.email },
+    });
+
+    if (existingSp) {
+      throw new ConflictException('Service provider with this email already exists');
+    }
+
+    // Generate SP code from business name (first 3 letters)
+    const spCode = this.generateSpCode(registerDto.businessName);
+
+    // Create service provider entity
+    const serviceProvider = this.serviceProviderRepository.create({
+      businessName: registerDto.businessName,
+      businessType: registerDto.businessType,
+      registrationNumber: registerDto.registrationNumber,
+      tinNumber: registerDto.tinNumber,
+      phoneNumber: registerDto.phoneNumber,
+      email: registerDto.email,
+      physicalAddress: registerDto.physicalAddress,
+      region: registerDto.region,
+      district: registerDto.district,
+      spCode,
+      status: OnboardingStatus.PENDING,
+      isActive: false,
+    });
+
+    await this.serviceProviderRepository.save(serviceProvider);
+
+    // Create contact
+    if (registerDto.contact) {
+      const contact = this.contactRepository.create({
+        ...registerDto.contact,
+        serviceProvider,
+      });
+      await this.contactRepository.save(contact);
+    }
+
+    // Create bank accounts
+    if (registerDto.bankAccounts && registerDto.bankAccounts.length > 0) {
+      const bankAccounts = registerDto.bankAccounts.map((account: any, index: number) =>
+        this.bankAccountRepository.create({
+          ...account,
+          serviceProvider,
+          isPrimary: index === 0, // First account is primary
+        })
+      );
+      await this.bankAccountRepository.save(bankAccounts);
+    }
+
+    // Create settings
+    if (registerDto.settings) {
+      const settings = this.settingsRepository.create({
+        ...registerDto.settings,
+        serviceProvider,
+      });
+      await this.settingsRepository.save(settings);
+    } else {
+      // Create default settings
+      const defaultSettings = this.settingsRepository.create({
+        serviceProvider,
+        commissionRate: 2.5,
+        settlementFrequency: SettlementFrequency.DAILY,
+        autoSettlement: false,
+      });
+      await this.settingsRepository.save(defaultSettings);
+    }
+
+    return {
+      success: true,
+      message: 'Registration successful. Your account is pending approval. You will be notified once approved.',
+      data: {
+        id: serviceProvider.id,
+        spCode: serviceProvider.spCode,
+        businessName: serviceProvider.businessName,
+        businessType: serviceProvider.businessType,
+        email: serviceProvider.email,
+        phoneNumber: serviceProvider.phoneNumber,
+        status: serviceProvider.status,
+        isActive: serviceProvider.isActive,
+      },
+    };
+  }
+
+  /**
+   * Generate SP code from business name
+   */
+  private generateSpCode(businessName: string): string {
+    return businessName
+      .split(' ')
+      .map(word => word[0])
+      .join('')
+      .toUpperCase()
+      .substring(0, 3);
   }
 
 }
