@@ -108,4 +108,43 @@ export class AuthController {
       user: new UserResponseDto(user),
     };
   }
+
+  /**
+   * Service Provider Login
+   */
+  @Public()
+  @Post('sp/login')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Login for Service Providers',
+    description: 'Authenticate service provider and return JWT token for SP portal access',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Service Provider login successful',
+    schema: {
+      example: {
+        accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+        refreshToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+        serviceProvider: {
+          id: '550e8400-e29b-41d4-a716-446655440000',
+          spCode: 'MWA',
+          businessName: 'Mwanga Secondary School',
+          businessType: 'SCHOOL',
+          email: 'admin@mwanga.school.tz',
+          phoneNumber: '+255712345678',
+          status: 'APPROVED',
+          isActive: true,
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Invalid credentials or account not approved' })
+  async spLogin(@Body() loginDto: LoginDto): Promise<{
+    accessToken: string;
+    refreshToken: string;
+    serviceProvider: any;
+  }> {
+    return await this.authService.spLogin(loginDto);
+  }
 }

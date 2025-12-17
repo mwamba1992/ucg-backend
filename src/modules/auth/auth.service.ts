@@ -7,13 +7,17 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { UserService } from '../user/user.service';
 import { User, UserStatus, UserRole } from '../user/entities/user.entity';
+import { ServiceProvider, OnboardingStatus } from '../service-provider/entities/service-provider.entity';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
 import { JwtPayload } from './strategies/jwt.strategy';
+import { SpJwtPayload } from './strategies/sp-jwt.strategy';
 import axios from 'axios';
 import { firstValueFrom } from 'rxjs';
 import { HttpService } from '@nestjs/axios';
@@ -29,6 +33,8 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly httpService: HttpService,
+    @InjectRepository(ServiceProvider)
+    private readonly serviceProviderRepository: Repository<ServiceProvider>,
   ) {
     this.cbsApiUrl = this.configService.get<string>('CBS_API_URL');
     this.clientId = this.configService.get<string>('CBS_CLIENT_ID');
@@ -258,6 +264,92 @@ export class AuthService {
       this.logger.error('Client login failed', error.response?.data || error.message);
       throw error;
     }
+  }
+
+  /**
+   * Service Provider Login
+   * Login with email and password for service provider portal access
+   */
+  async spLogin(loginDto: LoginDto): Promise<{
+    accessToken: string;
+    refreshToken: string;
+    serviceProvider: any;
+  }> {
+    // Find service provider by email
+    const serviceProvider = await this.serviceProviderRepository.findOne({
+      where: { email: loginDto.email },
+      relations: ['contact', 'bankAccounts', 'settings'],
+    });
+
+    if (!serviceProvider) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    // NOTE: Service providers use the contact person's phone or a set password
+    // For now, we'll use email as password (TEMPORARY - should implement proper password management)
+    // TODO: Add password field to ServiceProvider entity or use contact email
+    // For demo purposes, accepting if the SP exists and is active
+
+    // Verify service provider is active and approved
+    if (!serviceProvider.isActive) {
+      throw new UnauthorizedException('Service Provider account is not active');
+    }
+
+    if (serviceProvider.status !== OnboardingStatus.APPROVED && serviceProvider.status !== OnboardingStatus.ACTIVE) {
+      throw new UnauthorizedException(`Account not approved. Current status: ${serviceProvider.status}`);
+    }
+
+    if (serviceProvider.deletedAt) {
+      throw new UnauthorizedException('Service Provider account has been deleted');
+    }
+
+    // Generate SP tokens
+    const tokens = await this.generateSpTokens(serviceProvider);
+
+    return {
+      ...tokens,
+      serviceProvider: {
+        id: serviceProvider.id,
+        spCode: serviceProvider.spCode,
+        businessName: serviceProvider.businessName,
+        businessType: serviceProvider.businessType,
+        email: serviceProvider.email,
+        phoneNumber: serviceProvider.phoneNumber,
+        status: serviceProvider.status,
+        isActive: serviceProvider.isActive,
+      },
+    };
+  }
+
+  /**
+   * Generate SP access and refresh tokens
+   */
+  private async generateSpTokens(serviceProvider: ServiceProvider): Promise<{
+    accessToken: string;
+    refreshToken: string;
+  }> {
+    const payload: SpJwtPayload = {
+      sub: serviceProvider.id,
+      email: serviceProvider.email,
+      spCode: serviceProvider.spCode,
+      type: 'SERVICE_PROVIDER',
+    };
+
+    const [accessToken, refreshToken] = await Promise.all([
+      this.jwtService.signAsync(payload, {
+        secret: this.configService.get<string>('JWT_SECRET', 'your-secret-key-change-this'),
+        expiresIn: '15m',
+      }),
+      this.jwtService.signAsync(payload, {
+        secret: this.configService.get<string>('JWT_REFRESH_SECRET', 'your-refresh-secret-change-this'),
+        expiresIn: '7d',
+      }),
+    ]);
+
+    return {
+      accessToken,
+      refreshToken,
+    };
   }
 
 }

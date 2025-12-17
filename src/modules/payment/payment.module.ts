@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { PaymentController } from './payment.controller';
+import { SpPaymentController } from './sp-payment.controller';
 import { PaymentReference } from '../reference/entities/payment-reference.entity';
 import { ReferenceModule } from '../reference/reference.module'; // Import the ReferenceModule
 import { Payment } from './entities/payment.entity';
@@ -17,7 +18,7 @@ import { CBSModule } from '../cbs/cbs.module';
     NotificationModule,
     CBSModule, // Import CBS module for fund transfers
   ],
-  controllers: [PaymentController, PaymentConsumer],
+  controllers: [PaymentController, SpPaymentController, PaymentConsumer],
   providers: [PaymentService, PaymentProducer],
   exports: [PaymentService, PaymentProducer],
 })

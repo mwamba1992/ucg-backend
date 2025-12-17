@@ -16,9 +16,7 @@ import { ReferenceService } from './reference.service';
 import { CreateReferenceDto } from './dto/create-reference.dto';
 import { BulkGenerateReferenceDto } from './dto/bulk-generate-reference.dto';
 import { QueryReferenceDto } from './dto/query-reference.dto';
-import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { User } from '../user/entities/user.entity';
-import { ServiceProviderService } from '../service-provider/service-provider.service';
+import { SpJwtAuthGuard } from '../auth/guards/sp-jwt-auth.guard';
 
 /**
  * Service Provider Reference Controller
@@ -31,26 +29,12 @@ import { ServiceProviderService } from '../service-provider/service-provider.ser
  */
 @ApiTags('Service Provider - References')
 @Controller('sp/references')
-// @UseGuards(JwtAuthGuard, SpAuthGuard) // TODO: Implement SP authentication guards
+@UseGuards(SpJwtAuthGuard)
 @ApiBearerAuth()
 export class SpReferenceController {
   constructor(
     private readonly referenceService: ReferenceService,
   ) {}
-
-  /**
-   * NOTE: This controller is for Service Provider API access.
-   * Currently uses placeholder 'mock-sp-id' until proper SP authentication is implemented.
-   *
-   * TODO: Implement SpAuthGuard that:
-   * 1. Validates SP API key or SP JWT token
-   * 2. Adds serviceProviderId to request.user object
-   * 3. Replace all 'mock-sp-id' with req.user.serviceProviderId
-   *
-   * Service Providers should authenticate via:
-   * - API Key authentication (for external integrations), OR
-   * - Separate SP JWT tokens (different from admin user tokens)
-   */
 
   /**
    * Generate Single Reference
@@ -89,7 +73,7 @@ export class SpReferenceController {
     @Request() req: any, // TODO: Type this with actual request interface
   ) {
     // Extract SP ID from JWT token
-    const serviceProviderId = req.user?.serviceProviderId || 'mock-sp-id'; // TODO: Get from JWT
+    const serviceProviderId = req.user.serviceProviderId;
 
     const reference = await this.referenceService.create({
       ...createDto,
@@ -135,7 +119,7 @@ export class SpReferenceController {
     @Body() bulkDto: BulkGenerateReferenceDto,
     @Request() req: any,
   ) {
-    const serviceProviderId = req.user?.serviceProviderId || 'mock-sp-id';
+    const serviceProviderId = req.user.serviceProviderId;
 
     // Validate max references
     if (bulkDto.references.length > 1000) {
@@ -200,7 +184,7 @@ export class SpReferenceController {
   })
   @ApiResponse({ status: 404, description: 'Batch not found' })
   async getBulkStatus(@Param('batchId') batchId: string, @Request() req: any) {
-    const serviceProviderId = req.user?.serviceProviderId || 'mock-sp-id';
+    const serviceProviderId = req.user.serviceProviderId;
 
     const batch = await this.referenceService.getBatchStatus(batchId, serviceProviderId);
 
@@ -261,7 +245,7 @@ export class SpReferenceController {
     @Query('format') format: 'csv' | 'json' = 'csv',
     @Request() req: any,
   ) {
-    const serviceProviderId = req.user?.serviceProviderId || 'mock-sp-id';
+    const serviceProviderId = req.user.serviceProviderId;
 
     const results = await this.referenceService.downloadBulkResults(
       batchId,
@@ -291,7 +275,7 @@ export class SpReferenceController {
     @Param('referenceNumber') referenceNumber: string,
     @Request() req: any,
   ) {
-    const serviceProviderId = req.user?.serviceProviderId || 'mock-sp-id';
+    const serviceProviderId = req.user.serviceProviderId;
 
     const reference = await this.referenceService.findByReferenceNumber(
       referenceNumber,
@@ -336,7 +320,7 @@ export class SpReferenceController {
     @Query() query: QueryReferenceDto,
     @Request() req: any,
   ) {
-    const serviceProviderId = req.user?.serviceProviderId || 'mock-sp-id';
+    const serviceProviderId = req.user.serviceProviderId;
 
     const { items, total } = await this.referenceService.findAllForSp(
       serviceProviderId,
@@ -383,7 +367,7 @@ export class SpReferenceController {
     @Query('endDate') endDate?: string,
     @Request() req?: any,
   ) {
-    const serviceProviderId = req.user?.serviceProviderId || 'mock-sp-id';
+    const serviceProviderId = req.user.serviceProviderId;
 
     const stats = await this.referenceService.getStatistics(
       serviceProviderId,
@@ -417,7 +401,7 @@ export class SpReferenceController {
     @Body('reason') reason: string,
     @Request() req: any,
   ) {
-    const serviceProviderId = req.user?.serviceProviderId || 'mock-sp-id';
+    const serviceProviderId = req.user.serviceProviderId;
 
     const reference = await this.referenceService.cancel(
       referenceNumber,
@@ -455,7 +439,7 @@ export class SpReferenceController {
     @Param('referenceNumber') referenceNumber: string,
     @Request() req: any,
   ) {
-    const serviceProviderId = req.user?.serviceProviderId || 'mock-sp-id';
+    const serviceProviderId = req.user.serviceProviderId;
 
     const result = await this.referenceService.validate(
       referenceNumber,
@@ -487,7 +471,7 @@ export class SpReferenceController {
     @Body('additionalDays') additionalDays: number,
     @Request() req: any,
   ) {
-    const serviceProviderId = req.user?.serviceProviderId || 'mock-sp-id';
+    const serviceProviderId = req.user.serviceProviderId;
 
     const reference = await this.referenceService.extendExpiry(
       referenceNumber,
