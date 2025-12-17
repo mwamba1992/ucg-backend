@@ -322,10 +322,23 @@ export class SpReferenceController {
   ) {
     const serviceProviderId = req.user.serviceProviderId;
 
+    console.log('[SP References] Listing references for SP:', {
+      serviceProviderId,
+      email: req.user.email,
+      spCode: req.user.spCode,
+      query,
+    });
+
     const { items, total } = await this.referenceService.findAllForSp(
       serviceProviderId,
       query,
     );
+
+    console.log('[SP References] Found references:', {
+      total,
+      itemsCount: items.length,
+      serviceProviderId,
+    });
 
     const page = query.page || 1;
     const limit = query.limit || 20;
