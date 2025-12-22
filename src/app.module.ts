@@ -17,6 +17,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { CBSModule } from './modules/cbs/cbs.module';
 import { MpesaModule } from './modules/mpesa/mpesa.module';
 import { TigoPesaModule } from './modules/tigopesa/tigopesa.module';
+import { FinancialServiceProviderModule } from './modules/financial-service-provider/financial-service-provider.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import { RolesGuard } from './modules/auth/guards/roles.guard';
 
@@ -42,6 +43,7 @@ import { RolesGuard } from './modules/auth/guards/roles.guard';
 
     // Feature modules
     ServiceProviderModule,
+    FinancialServiceProviderModule, // Banks and MNOs
     ReferenceModule,
     PaymentModule,
     WorkflowModule,
