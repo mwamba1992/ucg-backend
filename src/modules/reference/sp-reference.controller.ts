@@ -14,6 +14,7 @@ import {
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { ReferenceService } from './reference.service';
 import { CreateReferenceDto } from './dto/create-reference.dto';
+import { UpdateReferenceDto } from './dto/update-reference.dto';
 import { BulkGenerateReferenceDto } from './dto/bulk-generate-reference.dto';
 import { QueryReferenceDto } from './dto/query-reference.dto';
 import { SpJwtAuthGuard } from '../auth/guards/sp-jwt-auth.guard';
@@ -257,48 +258,6 @@ export class SpReferenceController {
   }
 
   /**
-   * Get Reference Details
-   *
-   * GET /api/v1/sp/references/:referenceNumber
-   */
-  @Get(':referenceNumber')
-  @ApiOperation({
-    summary: 'Get reference details',
-    description: 'Get detailed information about a specific reference.',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Reference details retrieved',
-  })
-  @ApiResponse({ status: 404, description: 'Reference not found' })
-  async getReference(
-    @Param('referenceNumber') referenceNumber: string,
-    @Request() req: any,
-  ) {
-    const serviceProviderId = req.user.serviceProviderId;
-
-    const reference = await this.referenceService.findByReferenceNumber(
-      referenceNumber,
-      serviceProviderId,
-    );
-
-    if (!reference) {
-      return {
-        success: false,
-        error: {
-          code: 'REFERENCE_NOT_FOUND',
-          message: 'Reference not found or you do not have permission to access it',
-        },
-      };
-    }
-
-    return {
-      success: true,
-      data: this.referenceService.toResponseDto(reference),
-    };
-  }
-
-  /**
    * List Service Provider References
    *
    * GET /api/v1/sp/references
@@ -343,10 +302,23 @@ export class SpReferenceController {
     const page = query.page || 1;
     const limit = query.limit || 20;
 
+    const responseItems = items.map((ref) => this.referenceService.toResponseDto(ref));
+
+    console.log('[SP References] Response data:', {
+      itemCount: responseItems.length,
+      firstItem: responseItems.length > 0 ? {
+        referenceNumber: responseItems[0].referenceNumber,
+        customerName: responseItems[0].customerName,
+        amount: responseItems[0].amount,
+        status: responseItems[0].status,
+      } : null,
+      fullResponse: JSON.stringify(responseItems, null, 2),
+    });
+
     return {
       success: true,
       data: {
-        items: items.map((ref) => this.referenceService.toResponseDto(ref)),
+        items: responseItems,
         pagination: {
           page,
           limit,
@@ -502,6 +474,115 @@ export class SpReferenceController {
         extendedBy: additionalDays,
         extendedAt: new Date(),
       },
+    };
+  }
+
+  /**
+   * Update Reference
+   *
+   * PATCH /api/v1/sp/references/:referenceNumber
+   */
+  @Patch(':referenceNumber')
+  @ApiOperation({
+    summary: 'Update reference details',
+    description: 'Update reference information (only allowed for unpaid references).',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Reference updated successfully',
+    schema: {
+      example: {
+        success: true,
+        message: 'Reference updated successfully',
+        data: {
+          id: '550e8400-e29b-41d4-a716-446655440000',
+          referenceNumber: 'TAN-0001234-A7B',
+          customerName: 'Updated Name',
+          customerPhone: '+255712345678',
+          amount: 75000,
+          status: 'ACTIVE',
+          updatedAt: '2025-12-22T10:30:00.000Z',
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Cannot update used reference' })
+  @ApiResponse({ status: 404, description: 'Reference not found' })
+  async updateReference(
+    @Param('referenceNumber') referenceNumber: string,
+    @Body() updateDto: UpdateReferenceDto,
+    @Request() req: any,
+  ) {
+    const serviceProviderId = req.user.serviceProviderId;
+
+    // First, find the reference to get its ID
+    const reference = await this.referenceService.findByReferenceNumber(
+      referenceNumber,
+      serviceProviderId,
+    );
+
+    if (!reference) {
+      return {
+        success: false,
+        error: {
+          code: 'REFERENCE_NOT_FOUND',
+          message: 'Reference not found or you do not have permission to access it',
+        },
+      };
+    }
+
+    // Update the reference using its ID
+    const updatedReference = await this.referenceService.update(
+      reference.id,
+      updateDto,
+    );
+
+    return {
+      success: true,
+      message: 'Reference updated successfully',
+      data: this.referenceService.toResponseDto(updatedReference),
+    };
+  }
+
+  /**
+   * Get Reference Details
+   *
+   * GET /api/v1/sp/references/:referenceNumber
+   */
+  @Get(':referenceNumber')
+  @ApiOperation({
+    summary: 'Get reference details',
+    description: 'Get detailed information about a specific reference.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Reference details retrieved',
+  })
+  @ApiResponse({ status: 404, description: 'Reference not found' })
+  async getReference(
+    @Param('referenceNumber') referenceNumber: string,
+    @Request() req: any,
+  ) {
+    const serviceProviderId = req.user.serviceProviderId;
+
+    const reference = await this.referenceService.findByReferenceNumber(
+      referenceNumber,
+      serviceProviderId,
+    );
+
+    if (!reference) {
+      return {
+        success: false,
+        error: {
+          code: 'REFERENCE_NOT_FOUND',
+          message: 'Reference not found or you do not have permission to access it',
+        },
+      };
+    }
+
+    return {
+      success: true,
+      data: this.referenceService.toResponseDto(reference),
     };
   }
 }
