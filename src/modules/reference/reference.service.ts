@@ -443,10 +443,15 @@ export class ReferenceService {
       throw new BadRequestException('Cannot update a used reference');
     }
 
-    Object.assign(reference, updateDto);
+    // Extract expiresAt before Object.assign to handle it separately
+    const { expiresAt, ...restOfUpdateDto } = updateDto;
 
-    if (updateDto.expiresAt) {
-      reference.expiresAt = new Date(updateDto.expiresAt);
+    // Assign all other fields
+    Object.assign(reference, restOfUpdateDto);
+
+    // Handle expiresAt conversion from string to Date
+    if (expiresAt) {
+      reference.expiresAt = new Date(expiresAt);
     }
 
     return await this.referenceRepository.save(reference);
