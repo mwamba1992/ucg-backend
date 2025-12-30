@@ -53,10 +53,12 @@ export class ServiceProvider {
   })
   businessType: ServiceProviderType;
 
-  @Column({ length: 100, nullable: true })
+  @Column({ length: 100, unique: true })
+  @Index()
   registrationNumber: string; // BRELA registration number
 
-  @Column({ length: 100, nullable: true })
+  @Column({ length: 100, unique: true })
+  @Index()
   tinNumber: string; // TRA TIN number
 
   // Contact Information

@@ -35,23 +35,23 @@ export class CreateServiceProviderDto {
   @IsEnum(ServiceProviderType)
   businessType: ServiceProviderType;
 
-  @ApiPropertyOptional({
-    description: 'Business registration number from BRELA',
+  @ApiProperty({
+    description: 'Business registration number from BRELA (unique)',
     example: 'BN123456789',
   })
-  @IsOptional()
+  @IsNotEmpty()
   @IsString()
   @MaxLength(100)
-  registrationNumber?: string;
+  registrationNumber: string;
 
-  @ApiPropertyOptional({
-    description: 'Tax Identification Number from TRA',
+  @ApiProperty({
+    description: 'Tax Identification Number from TRA (unique)',
     example: '123-456-789',
   })
-  @IsOptional()
+  @IsNotEmpty()
   @IsString()
   @MaxLength(100)
-  tinNumber?: string;
+  tinNumber: string;
 
   @ApiProperty({
     description: 'Business phone number',

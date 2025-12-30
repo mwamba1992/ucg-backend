@@ -82,6 +82,24 @@ export class ServiceProviderService {
       throw new ConflictException('Email already registered');
     }
 
+    // Check if registration number already exists
+    const existingRegNumber = await this.serviceProviderRepository.findOne({
+      where: { registrationNumber: createDto.registrationNumber },
+    });
+
+    if (existingRegNumber) {
+      throw new ConflictException('Business registration number already registered');
+    }
+
+    // Check if TIN number already exists
+    const existingTin = await this.serviceProviderRepository.findOne({
+      where: { tinNumber: createDto.tinNumber },
+    });
+
+    if (existingTin) {
+      throw new ConflictException('TIN number already registered');
+    }
+
     // Generate SP code
     const spCode = await this.generateSpCode(createDto.businessName);
 
@@ -286,6 +304,40 @@ export class ServiceProviderService {
           throw new ConflictException('Email already in use by another service provider');
         }
         this.logger.log(`✅ Email is unique`);
+      }
+
+      // If registration number is being updated, check for duplicates (excluding current SP)
+      if (updateDto.registrationNumber && updateDto.registrationNumber !== serviceProvider.registrationNumber) {
+        this.logger.log(`📋 Checking registration number uniqueness: ${updateDto.registrationNumber}`);
+        const existingRegNumber = await this.serviceProviderRepository.findOne({
+          where: {
+            registrationNumber: updateDto.registrationNumber,
+            id: Not(id),
+          },
+        });
+
+        if (existingRegNumber) {
+          this.logger.error(`❌ Registration number already in use: ${updateDto.registrationNumber}`);
+          throw new ConflictException('Business registration number already in use by another service provider');
+        }
+        this.logger.log(`✅ Registration number is unique`);
+      }
+
+      // If TIN number is being updated, check for duplicates (excluding current SP)
+      if (updateDto.tinNumber && updateDto.tinNumber !== serviceProvider.tinNumber) {
+        this.logger.log(`🔢 Checking TIN number uniqueness: ${updateDto.tinNumber}`);
+        const existingTin = await this.serviceProviderRepository.findOne({
+          where: {
+            tinNumber: updateDto.tinNumber,
+            id: Not(id),
+          },
+        });
+
+        if (existingTin) {
+          this.logger.error(`❌ TIN number already in use: ${updateDto.tinNumber}`);
+          throw new ConflictException('TIN number already in use by another service provider');
+        }
+        this.logger.log(`✅ TIN number is unique`);
       }
 
       // Update main entity fields
