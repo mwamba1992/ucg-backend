@@ -201,12 +201,12 @@ export class AuthService {
 
     const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync(payload, {
-        secret: this.configService.get<string>('JWT_SECRET', 'your-secret-key-change-this'),
-        expiresIn: this.configService.get<string>('JWT_EXPIRATION', '24h'),
+        secret: this.configService.get<string>('JWT_SECRET') || 'your-secret-key-change-this',
+        expiresIn: '60m',
       }),
       this.jwtService.signAsync(payload, {
-        secret: this.configService.get<string>('JWT_REFRESH_SECRET', 'your-refresh-secret-change-this'),
-        expiresIn: this.configService.get<string>('JWT_REFRESH_EXPIRATION', '30d'),
+        secret: this.configService.get<string>('JWT_REFRESH_SECRET') || 'your-refresh-secret-change-this',
+        expiresIn: '30d',
       }),
     ]);
 
@@ -346,12 +346,12 @@ export class AuthService {
 
     const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync(payload, {
-        secret: this.configService.get<string>('JWT_SECRET', 'your-secret-key-change-this'),
-        expiresIn: this.configService.get<string>('JWT_EXPIRATION', '24h'),
+        secret: this.configService.get<string>('JWT_SECRET') || 'your-secret-key-change-this',
+        expiresIn: '60m',
       }),
       this.jwtService.signAsync(payload, {
-        secret: this.configService.get<string>('JWT_REFRESH_SECRET', 'your-refresh-secret-change-this'),
-        expiresIn: this.configService.get<string>('JWT_REFRESH_EXPIRATION', '30d'),
+        secret: this.configService.get<string>('JWT_REFRESH_SECRET') || 'your-refresh-secret-change-this',
+        expiresIn: '30d',
       }),
     ]);
 
