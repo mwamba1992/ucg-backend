@@ -67,10 +67,10 @@ export class CreatePaymentDto {
 
   @ApiPropertyOptional({
     description: 'Transaction ID (if applicable)',
-    example: 'uuid-here',
+    example: 'string',
   })
   @IsOptional()
-  @IsUUID()
+  @IsString()
   transactionId?: string;
 
   @ApiPropertyOptional({

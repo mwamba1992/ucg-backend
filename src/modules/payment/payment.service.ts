@@ -160,7 +160,7 @@ export class PaymentService {
     const netAmount = grossAmount - commission;
 
     // Get UCG GL account from environment or config
-    const ucgGLAccount = process.env.UCG_GL_ACCOUNT || '1-09-001-10-1200-1200108';
+    const ucgGLAccount = process.env.UCG_GL_ACCOUNT;
     const spDepositAccount = primaryBankAccount.accountNumber;
 
     this.logger.log(
