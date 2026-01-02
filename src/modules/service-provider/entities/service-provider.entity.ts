@@ -14,12 +14,9 @@ import { ServiceProviderSettings } from './service-provider-settings.entity';
 
 export enum ServiceProviderType {
   SCHOOL = 'SCHOOL',
-  HOSPITAL = 'HOSPITAL',
-  CHURCH = 'CHURCH',
-  SACCO = 'SACCO',
-  MFI = 'MFI',
-  NGO = 'NGO',
+  MICROFINANCE = 'MICROFINANCE',
   UTILITY = 'UTILITY',
+  HEALTHCARE = 'HEALTHCARE',
   GOVERNMENT = 'GOVERNMENT',
   OTHER = 'OTHER',
 }
@@ -52,6 +49,9 @@ export class ServiceProvider {
     enum: ServiceProviderType,
   })
   businessType: ServiceProviderType;
+
+  @Column({ length: 200, nullable: true })
+  otherBusinessType: string; // Specified when businessType is OTHER
 
   @Column({ length: 100, unique: true })
   @Index()

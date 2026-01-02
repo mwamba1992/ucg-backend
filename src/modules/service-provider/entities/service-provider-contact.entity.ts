@@ -9,6 +9,13 @@ import {
 } from 'typeorm';
 import { ServiceProvider } from './service-provider.entity';
 
+export enum IdType {
+  NIDA = 'NIDA',
+  PASSPORT = 'PASSPORT',
+  DRIVING_LICENSE = 'DRIVING_LICENSE',
+  VOTER_ID = 'VOTER_ID',
+}
+
 @Entity('service_provider_contacts')
 export class ServiceProviderContact {
   @PrimaryGeneratedColumn('uuid')
@@ -27,8 +34,15 @@ export class ServiceProviderContact {
   @Column({ length: 100 })
   email: string;
 
+  @Column({
+    type: 'enum',
+    enum: IdType,
+    default: IdType.NIDA,
+  })
+  idType: IdType;
+
   @Column({ length: 100, nullable: true })
-  idNumber: string; // NIDA number
+  idNumber: string; // ID number based on idType
 
   @Column({ length: 100, nullable: true })
   position: string; // Job title/position

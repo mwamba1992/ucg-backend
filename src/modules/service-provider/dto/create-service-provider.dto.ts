@@ -35,6 +35,15 @@ export class CreateServiceProviderDto {
   @IsEnum(ServiceProviderType)
   businessType: ServiceProviderType;
 
+  @ApiPropertyOptional({
+    description: 'Specify business type when businessType is OTHER',
+    example: 'Community Center',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  otherBusinessType?: string;
+
   @ApiProperty({
     description: 'Business registration number from BRELA (unique)',
     example: 'BN123456789',

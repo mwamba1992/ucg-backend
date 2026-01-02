@@ -394,6 +394,7 @@ export class AuthService {
       const serviceProvider = this.serviceProviderRepository.create({
         businessName: registerDto.businessName,
         businessType: registerDto.businessType,
+        otherBusinessType: registerDto.otherBusinessType,
         registrationNumber: registerDto.registrationNumber,
         tinNumber: registerDto.tinNumber,
         phoneNumber: registerDto.phoneNumber,

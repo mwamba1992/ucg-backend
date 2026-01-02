@@ -108,6 +108,7 @@ export class ServiceProviderService {
       spCode,
       businessName: createDto.businessName,
       businessType: createDto.businessType,
+      otherBusinessType: createDto.otherBusinessType,
       registrationNumber: createDto.registrationNumber,
       tinNumber: createDto.tinNumber,
       phoneNumber: createDto.phoneNumber,
@@ -345,6 +346,7 @@ export class ServiceProviderService {
       Object.assign(serviceProvider, {
         businessName: updateDto.businessName,
         businessType: updateDto.businessType,
+        otherBusinessType: updateDto.otherBusinessType,
         registrationNumber: updateDto.registrationNumber,
         tinNumber: updateDto.tinNumber,
         phoneNumber: updateDto.phoneNumber,
