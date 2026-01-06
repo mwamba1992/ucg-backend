@@ -288,6 +288,7 @@ export class AuthService {
     accessToken: string;
     refreshToken: string;
     serviceProvider: any;
+    user?: any;
   }> {
     // Find service provider by email
     const serviceProvider = await this.serviceProviderRepository.findOne({
@@ -317,6 +318,27 @@ export class AuthService {
       throw new UnauthorizedException('Service Provider account has been deleted');
     }
 
+    // Query for associated user by email (if exists)
+    let user = null;
+    try {
+      const userRecord = await this.userService.findByEmail(loginDto.email);
+      if (userRecord && userRecord.userType === UserType.SERVICE_PROVIDER) {
+        user = {
+          id: userRecord.id,
+          firstName: userRecord.firstName,
+          lastName: userRecord.lastName,
+          email: userRecord.email,
+          phoneNumber: userRecord.phoneNumber,
+          role: userRecord.role,
+          userType: userRecord.userType,
+          status: userRecord.status,
+        };
+      }
+    } catch (error) {
+      // User doesn't exist - that's ok, continue without user object
+      this.logger.warn(`No user found for SP email: ${loginDto.email}`);
+    }
+
     // Generate SP tokens
     const tokens = await this.generateSpTokens(serviceProvider);
 
@@ -332,6 +354,7 @@ export class AuthService {
         status: serviceProvider.status,
         isActive: serviceProvider.isActive,
       },
+      ...(user && { user }), // Only include user if it exists
     };
   }
 

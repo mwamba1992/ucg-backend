@@ -117,7 +117,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Login for Service Providers',
-    description: 'Authenticate service provider and return JWT token for SP portal access',
+    description: 'Authenticate service provider and return JWT token for SP portal access. Includes user object with role if a User account exists for the SP.',
   })
   @ApiResponse({
     status: 200,
@@ -136,6 +136,16 @@ export class AuthController {
           status: 'APPROVED',
           isActive: true,
         },
+        user: {
+          id: '660e8400-e29b-41d4-a716-446655440001',
+          firstName: 'John',
+          lastName: 'Doe',
+          email: 'admin@mwanga.school.tz',
+          phoneNumber: '+255712345678',
+          role: 'SP_ADMIN',
+          userType: 'SERVICE_PROVIDER',
+          status: 'ACTIVE',
+        },
       },
     },
   })
@@ -144,6 +154,7 @@ export class AuthController {
     accessToken: string;
     refreshToken: string;
     serviceProvider: any;
+    user?: any;
   }> {
     return await this.authService.spLogin(loginDto);
   }
