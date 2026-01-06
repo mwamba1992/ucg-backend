@@ -103,6 +103,7 @@ export class AuthService {
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
+        userType: user.userType,
         role: user.role,
         status: user.status,
       },
@@ -144,6 +145,7 @@ export class AuthService {
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
+        userType: user.userType,
         role: user.role,
         status: user.status,
       },
@@ -171,6 +173,7 @@ export class AuthService {
     const payload: JwtPayload = {
       sub: user.id,
       email: user.email,
+      userType: user.userType,
       role: user.role,
     };
 
@@ -196,6 +199,7 @@ export class AuthService {
     const payload: JwtPayload = {
       sub: user.id,
       email: user.email,
+      userType: user.userType,
       role: user.role,
     };
 

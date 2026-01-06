@@ -260,4 +260,116 @@ export class FinancialServiceProviderController {
   async remove(@Param('id') id: string) {
     await this.fspService.remove(id);
   }
+
+  // ==================== Payment Reporting Endpoints ====================
+
+  @Get(':fspCode/payment-report')
+  @ApiOperation({
+    summary: 'Get payment report for FSP',
+    description: 'Get detailed payment analytics and statistics for a specific FSP',
+  })
+  @ApiParam({
+    name: 'fspCode',
+    description: 'FSP code (e.g., VODACOM, FSP001)',
+  })
+  @ApiQuery({
+    name: 'startDate',
+    required: false,
+    description: 'Start date (ISO format)',
+    example: '2025-01-01',
+  })
+  @ApiQuery({
+    name: 'endDate',
+    required: false,
+    description: 'End date (ISO format)',
+    example: '2025-01-31',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Payment report retrieved successfully',
+  })
+  async getPaymentReport(
+    @Param('fspCode') fspCode: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    const report = await this.fspService.getPaymentReport(
+      fspCode,
+      startDate ? new Date(startDate) : undefined,
+      endDate ? new Date(endDate) : undefined,
+    );
+
+    return {
+      success: true,
+      data: report,
+    };
+  }
+
+  @Get('reports/all-fsps')
+  @ApiOperation({
+    summary: 'Get payment reports for all FSPs',
+    description: 'Get aggregated payment statistics for all FSPs',
+  })
+  @ApiQuery({
+    name: 'startDate',
+    required: false,
+    description: 'Start date (ISO format)',
+  })
+  @ApiQuery({
+    name: 'endDate',
+    required: false,
+    description: 'End date (ISO format)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'All FSP reports retrieved successfully',
+  })
+  async getAllFspReports(
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    const reports = await this.fspService.getAllFspReports(
+      startDate ? new Date(startDate) : undefined,
+      endDate ? new Date(endDate) : undefined,
+    );
+
+    return {
+      success: true,
+      data: reports,
+    };
+  }
+
+  @Get(':fspCode/daily-transactions')
+  @ApiOperation({
+    summary: 'Get daily transaction trend for FSP',
+    description: 'Get day-by-day transaction count and volume for a specific FSP',
+  })
+  @ApiParam({
+    name: 'fspCode',
+    description: 'FSP code',
+  })
+  @ApiQuery({
+    name: 'days',
+    required: false,
+    description: 'Number of days to look back (default: 30)',
+    example: 30,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Daily transaction trend retrieved',
+  })
+  async getDailyTransactions(
+    @Param('fspCode') fspCode: string,
+    @Query('days') days?: number,
+  ) {
+    const trend = await this.fspService.getDailyTransactionTrend(
+      fspCode,
+      days || 30,
+    );
+
+    return {
+      success: true,
+      data: trend,
+    };
+  }
 }
