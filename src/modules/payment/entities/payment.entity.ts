@@ -49,7 +49,7 @@ export class Payment {
   @Column({ type: 'varchar', length: 30, default: 'Bank' })
   paymentChannel: string;
 
-  @Column({ type: 'varchar', length: 50 })
+  @Column({ type: 'varchar', length: 50, default: 'UNKNOWN' })
   @Index()
   fspCode: string;
 

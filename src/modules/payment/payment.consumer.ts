@@ -36,6 +36,7 @@ export class PaymentConsumer {
         referenceNumber: message.referenceNumber,
         amountPaid: message.amountPaid,
         paymentChannel: message.paymentChannel,
+        fspCode: message.fspCode,
         payerName: message.payerName,
         payerPhone: message.payerPhone,
         transactionId: message.transactionId,

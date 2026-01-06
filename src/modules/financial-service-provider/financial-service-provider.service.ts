@@ -342,11 +342,11 @@ export class FinancialServiceProviderService {
       .where('payment.fspCode = :fspCode', { fspCode });
 
     if (startDate) {
-      queryBuilder.andWhere('payment.createdAt >= :startDate', { startDate });
+      queryBuilder.andWhere('payment.paidAt >= :startDate', { startDate });
     }
 
     if (endDate) {
-      queryBuilder.andWhere('payment.createdAt <= :endDate', { endDate });
+      queryBuilder.andWhere('payment.paidAt <= :endDate', { endDate });
     }
 
     const payments = await queryBuilder.getMany();
@@ -354,36 +354,33 @@ export class FinancialServiceProviderService {
     // Calculate summary statistics
     const totalPayments = payments.length;
     const totalAmount = payments.reduce(
-      (sum, p) => sum + Number(p.amount),
+      (sum, p) => sum + Number(p.amountPaid),
       0,
     );
 
     const successfulPayments = payments.filter(
-      (p) => p.status === PaymentStatus.COMPLETED,
+      (p) => p.status === PaymentStatus.SUCCESS,
     );
     const successfulAmount = successfulPayments.reduce(
-      (sum, p) => sum + Number(p.amount),
+      (sum, p) => sum + Number(p.amountPaid),
       0,
     );
 
     const failedPayments = payments.filter(
       (p) =>
         p.status === PaymentStatus.FAILED ||
-        p.status === PaymentStatus.REJECTED ||
-        p.status === PaymentStatus.CANCELLED,
+        p.status === PaymentStatus.REVERSED,
     );
     const failedAmount = failedPayments.reduce(
-      (sum, p) => sum + Number(p.amount),
+      (sum, p) => sum + Number(p.amountPaid),
       0,
     );
 
     const pendingPayments = payments.filter(
-      (p) =>
-        p.status === PaymentStatus.PENDING ||
-        p.status === PaymentStatus.PROCESSING,
+      (p) => p.status === PaymentStatus.PENDING,
     );
     const pendingAmount = pendingPayments.reduce(
-      (sum, p) => sum + Number(p.amount),
+      (sum, p) => sum + Number(p.amountPaid),
       0,
     );
 
@@ -398,18 +395,18 @@ export class FinancialServiceProviderService {
       return {
         status,
         count: statusPayments.length,
-        amount: statusPayments.reduce((sum, p) => sum + Number(p.amount), 0),
+        amount: statusPayments.reduce((sum, p) => sum + Number(p.amountPaid), 0),
       };
     });
 
-    // Group by service provider
+    // Group by service provider (using referenceNumber prefix)
     const spGroups = payments.reduce((acc, payment) => {
-      const spCode = payment.spCode || 'UNKNOWN';
+      const spCode = payment.referenceNumber?.split('-')[0] || 'UNKNOWN';
       if (!acc[spCode]) {
         acc[spCode] = { spCode, count: 0, amount: 0 };
       }
       acc[spCode].count++;
-      acc[spCode].amount += Number(payment.amount);
+      acc[spCode].amount += Number(payment.amountPaid);
       return acc;
     }, {} as Record<string, { spCode: string; count: number; amount: number }>);
 
@@ -460,25 +457,25 @@ export class FinancialServiceProviderService {
           .where('payment.fspCode = :fspCode', { fspCode: fsp.fspCode });
 
         if (startDate) {
-          queryBuilder.andWhere('payment.createdAt >= :startDate', {
+          queryBuilder.andWhere('payment.paidAt >= :startDate', {
             startDate,
           });
         }
 
         if (endDate) {
-          queryBuilder.andWhere('payment.createdAt <= :endDate', { endDate });
+          queryBuilder.andWhere('payment.paidAt <= :endDate', { endDate });
         }
 
         const payments = await queryBuilder.getMany();
 
         const totalPayments = payments.length;
         const totalAmount = payments.reduce(
-          (sum, p) => sum + Number(p.amount),
+          (sum, p) => sum + Number(p.amountPaid),
           0,
         );
 
         const successfulPayments = payments.filter(
-          (p) => p.status === PaymentStatus.COMPLETED,
+          (p) => p.status === PaymentStatus.SUCCESS,
         ).length;
 
         const successRate =
@@ -528,7 +525,7 @@ export class FinancialServiceProviderService {
     const payments = await this.paymentRepository
       .createQueryBuilder('payment')
       .where('payment.fspCode = :fspCode', { fspCode })
-      .andWhere('payment.createdAt >= :startDate', { startDate })
+      .andWhere('payment.paidAt >= :startDate', { startDate })
       .getMany();
 
     // Group by date
@@ -559,19 +556,18 @@ export class FinancialServiceProviderService {
 
     // Aggregate payments
     payments.forEach((payment) => {
-      const dateStr = payment.createdAt.toISOString().split('T')[0];
+      const dateStr = payment.paidAt.toISOString().split('T')[0];
       const daily = dailyMap.get(dateStr);
 
       if (daily) {
         daily.count++;
-        daily.amount += Number(payment.amount);
+        daily.amount += Number(payment.amountPaid);
 
-        if (payment.status === PaymentStatus.COMPLETED) {
+        if (payment.status === PaymentStatus.SUCCESS) {
           daily.successCount++;
         } else if (
           payment.status === PaymentStatus.FAILED ||
-          payment.status === PaymentStatus.REJECTED ||
-          payment.status === PaymentStatus.CANCELLED
+          payment.status === PaymentStatus.REVERSED
         ) {
           daily.failedCount++;
         }

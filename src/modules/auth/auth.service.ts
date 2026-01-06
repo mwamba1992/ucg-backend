@@ -11,7 +11,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { UserService } from '../user/user.service';
-import { User, UserStatus, UserRole } from '../user/entities/user.entity';
+import { User, UserStatus, UserRole, UserType } from '../user/entities/user.entity';
 import { ServiceProvider, OnboardingStatus, ServiceProviderType } from '../service-provider/entities/service-provider.entity';
 import { ServiceProviderContact } from '../service-provider/entities/service-provider-contact.entity';
 import { ServiceProviderBankAccount } from '../service-provider/entities/service-provider-bank-account.entity';
@@ -128,6 +128,7 @@ export class AuthService {
       email: registerDto.email,
       phoneNumber: registerDto.phoneNumber,
       password: registerDto.password,
+      userType: registerDto.userType || UserType.ADMIN,
       role: registerDto.role || UserRole.VIEWER,
       status: UserStatus.PENDING, // Default to PENDING for approval
     });

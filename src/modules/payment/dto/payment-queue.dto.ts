@@ -7,6 +7,7 @@ export class ProcessPaymentMessage {
   referenceNumber: string;
   amountPaid: number;
   paymentChannel: string; // Payment channel/method (e.g., 'Bank', 'Mobile Money')
+  fspCode: string; // Financial Service Provider Code (e.g., 'VODACOM', 'CRDB')
   payerName?: string;
   payerPhone?: string;
   transactionId?: string;

@@ -281,6 +281,7 @@ export class TigoPesaService {
         referenceNumber: message.customerReferenceId,
         amountPaid: message.amount,
         paymentChannel: 'TigoPesa',
+        fspCode: 'TIGO',
         payerName: message.senderName || message.msisdn,
         payerPhone: message.msisdn,
         transactionId: message.txnId,

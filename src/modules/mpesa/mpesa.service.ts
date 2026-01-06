@@ -330,6 +330,7 @@ export class MpesaService {
         referenceNumber: message.referenceNumber,
         amountPaid: message.amount,
         paymentChannel: 'M-Pesa',
+        fspCode: 'VODACOM',
         payerName: message.customerName || message.customerPhone,
         payerPhone: message.customerPhone,
         transactionId: message.mpesaReceipt,
