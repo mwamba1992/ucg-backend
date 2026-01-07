@@ -55,29 +55,56 @@ export class MpesaService {
    */
   async parseXmlNotification(xmlBody: string): Promise<MpesaC2BNotificationDto> {
     try {
-      const parser = new xml2js.Parser({ explicitArray: false });
-      const result = await parser.parseStringPromise(xmlBody);
+      // Clean the XML body (remove any leading/trailing whitespace)
+      const cleanedXml = xmlBody.trim();
 
-      // Extract data from XML structure
-      const request = result.request;
+      this.logger.debug(`Parsing XML body, length: ${cleanedXml.length}`);
+      this.logger.debug(`XML starts with: ${cleanedXml.substring(0, 50)}`);
+
+      const parser = new xml2js.Parser({
+        explicitArray: false,
+        trim: true,
+        normalize: true,
+      });
+      const result = await parser.parseStringPromise(cleanedXml);
+
+      this.logger.debug(`Parsed result keys: ${Object.keys(result).join(', ')}`);
+
+      // Extract data from mpesaBroker structure
+      const mpesaBroker = result.mpesaBroker || result;
+
+      if (!mpesaBroker.request) {
+        this.logger.error('Missing request element in XML');
+        throw new Error('Invalid XML structure: missing request element');
+      }
+
+      const request = mpesaBroker.request;
+      const serviceProvider = request.serviceProvider;
+      const transaction = request.transaction;
+
+      if (!serviceProvider || !transaction) {
+        this.logger.error('Missing serviceProvider or transaction elements');
+        throw new Error('Invalid XML structure: missing serviceProvider or transaction');
+      }
 
       return {
-        spId: request.spId,
-        spPassword: request.spPassword,
-        timestamp: request.timeStamp,
-        amount: parseFloat(request.amount),
-        commandID: request.commandID,
-        initiator: request.initiator,
-        originatorConversationID: request.originatorConversationID,
-        recipient: request.recipient,
-        mpesaReceipt: request.serviceReceipt,
-        transactionDate: request.serviceDate,
-        accountReference: request.accountReference,
-        transactionID: request.transactionID,
-        conversationID: request.conversationID,
+        spId: serviceProvider.spId,
+        spPassword: serviceProvider.spPassword,
+        timestamp: serviceProvider.timestamp,
+        amount: parseFloat(transaction.amount),
+        commandID: transaction.commandID,
+        initiator: transaction.initiator,
+        originatorConversationID: transaction.originatorConversationID,
+        recipient: transaction.recipient,
+        mpesaReceipt: transaction.mpesaReceipt,
+        transactionDate: transaction.transactionDate,
+        accountReference: transaction.accountReference,
+        transactionID: transaction.transactionID,
+        conversationID: transaction.conversationID,
       };
     } catch (error) {
       this.logger.error(`Failed to parse M-Pesa XML notification: ${error.message}`);
+      this.logger.error(`Stack: ${error.stack}`);
       throw new BadRequestException('Invalid XML format');
     }
   }
@@ -90,15 +117,25 @@ export class MpesaService {
     originatorConversationId: string,
     transactionId: string,
   ): string {
-    const builder = new xml2js.Builder({ rootName: 'response' });
+    const builder = new xml2js.Builder({
+      rootName: 'mpesaBroker',
+      xmldec: { version: '1.0', encoding: 'UTF-8' },
+      headless: false,
+    });
 
-    const response: MpesaSyncResponseDto = {
-      conversationID: conversationId,
-      originatorConversationID: originatorConversationId,
-      transactionID: transactionId,
-      responseCode: '0',
-      responseDesc: 'Received',
-      serviceStatus: 'Success',
+    const response = {
+      $: {
+        xmlns: 'http://inforwise.co.tz/broker/',
+        version: '2.0',
+      },
+      response: {
+        conversationID: conversationId,
+        originatorConversationID: originatorConversationId,
+        transactionID: transactionId,
+        responseCode: '0',
+        responseDesc: 'Received',
+        serviceStatus: 'Success',
+      },
     };
 
     return builder.buildObject(response);
@@ -108,22 +145,36 @@ export class MpesaService {
    * Build callback XML for M-Pesa
    */
   async buildCallbackXml(callback: MpesaCallbackDto): Promise<string> {
-    const builder = new xml2js.Builder({ rootName: 'request' });
+    const builder = new xml2js.Builder({
+      rootName: 'mpesaBroker',
+      xmldec: { version: '1.0', encoding: 'UTF-8' },
+      headless: false,
+    });
 
     return builder.buildObject({
-      spId: callback.spId,
-      spPassword: callback.spPassword,
-      timeStamp: callback.timestamp,
-      resultType: callback.resultType,
-      resultCode: callback.resultCode,
-      resultDesc: callback.resultDesc,
-      serviceReceipt: callback.serviceReceipt,
-      serviceDate: callback.serviceDate,
-      originatorConversationID: callback.originatorConversationID,
-      conversationID: callback.conversationID,
-      transactionID: callback.transactionID,
-      initiator: callback.initiator,
-      initiatorPassword: callback.initiatorPassword,
+      $: {
+        xmlns: 'http://inforwise.co.tz/broker/',
+        version: '2.0',
+      },
+      request: {
+        serviceProvider: {
+          spId: callback.spId,
+          spPassword: callback.spPassword,
+          timestamp: callback.timestamp,
+        },
+        transaction: {
+          resultType: callback.resultType,
+          resultCode: callback.resultCode,
+          resultDesc: callback.resultDesc,
+          mpesaReceipt: callback.serviceReceipt,
+          transactionDate: callback.serviceDate,
+          originatorConversationID: callback.originatorConversationID,
+          conversationID: callback.conversationID,
+          transactionID: callback.transactionID,
+          initiator: callback.initiator,
+          initiatorPassword: callback.initiatorPassword,
+        },
+      },
     });
   }
 

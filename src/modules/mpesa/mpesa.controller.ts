@@ -51,15 +51,17 @@ export class MpesaController {
       'application/xml': {
         schema: {
           type: 'string',
-          example: `<?xml version="1.0"?>
-<response>
-  <conversationID>12345</conversationID>
-  <originatorConversationID>67890</originatorConversationID>
-  <transactionID>ABC123</transactionID>
-  <responseCode>0</responseCode>
-  <responseDesc>Received</responseDesc>
-  <serviceStatus>Success</serviceStatus>
-</response>`,
+          example: `<?xml version="1.0" encoding="UTF-8"?>
+<mpesaBroker xmlns="http://inforwise.co.tz/broker/" version="2.0">
+  <response>
+    <conversationID>025d7efd-58bc-b06b-2aab91cde3b1</conversationID>
+    <originatorConversationID>025d7efd-58bc-b06b-2aab91cde3b1</originatorConversationID>
+    <transactionID>1251899741111</transactionID>
+    <responseCode>0</responseCode>
+    <responseDesc>Received</responseDesc>
+    <serviceStatus>Success</serviceStatus>
+  </response>
+</mpesaBroker>`,
         },
       },
     },
@@ -70,6 +72,11 @@ export class MpesaController {
 
     try {
       this.logger.log('M-Pesa C2B payment notification received');
+
+      // Log raw body for debugging
+      this.logger.debug(`Raw body type: ${typeof xmlBody}`);
+      this.logger.debug(`Raw body length: ${xmlBody?.length || 0}`);
+      this.logger.debug(`First 100 chars: ${xmlBody?.substring(0, 100)}`);
 
       // Parse XML notification
       const notification = await this.mpesaService.parseXmlNotification(xmlBody);

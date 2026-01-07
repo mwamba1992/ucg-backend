@@ -3,6 +3,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { Transport, MicroserviceOptions } from '@nestjs/microservices';
 import { AppModule } from './app.module';
+import * as bodyParser from 'body-parser';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -46,6 +47,13 @@ async function bootstrap() {
 
   // Enable CORS
   app.enableCors();
+
+  // Configure body parser for XML endpoints
+  // Use raw body parser for XML webhooks (M-Pesa, TigoPesa)
+  app.use('/api/v1/mpesa/c2b/payment', bodyParser.text({ type: 'application/xml' }));
+  app.use('/api/v1/mpesa/c2b/payment', bodyParser.text({ type: 'text/xml' }));
+  app.use('/api/v1/tigopesa/billpay', bodyParser.text({ type: 'application/xml' }));
+  app.use('/api/v1/tigopesa/billpay', bodyParser.text({ type: 'text/xml' }));
 
   // Global validation pipe
   app.useGlobalPipes(
