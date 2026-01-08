@@ -142,6 +142,41 @@ export class MpesaService {
   }
 
   /**
+   * Build error response (XML)
+   */
+  buildErrorResponse(
+    conversationId: string,
+    originatorConversationId: string,
+    transactionId: string,
+    responseCode: string,
+    responseDesc: string,
+    serviceStatus: string,
+  ): string {
+    const builder = new xml2js.Builder({
+      rootName: 'mpesaBroker',
+      xmldec: { version: '1.0', encoding: 'UTF-8' },
+      headless: false,
+    });
+
+    const response = {
+      $: {
+        xmlns: 'http://inforwise.co.tz/broker/',
+        version: '2.0',
+      },
+      response: {
+        conversationID: conversationId,
+        originatorConversationID: originatorConversationId,
+        transactionID: transactionId,
+        responseCode,
+        responseDesc,
+        serviceStatus,
+      },
+    };
+
+    return builder.buildObject(response);
+  }
+
+  /**
    * Build callback XML for M-Pesa
    */
   async buildCallbackXml(callback: MpesaCallbackDto): Promise<string> {

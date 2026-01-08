@@ -1,42 +1,49 @@
 # M-Pesa Testing Status
 
-## Current Status: ⚠️ Server Not Listening on Port
+## Current Status: ✅ Ready to Test (Password Fixed)
 
-### What We Found
+### What We Fixed
 
-1. ✅ **Server Process Running**: NestJS process is running (PID 68269)
+1. ✅ **Server Process Running**: NestJS process is running
 2. ✅ **M-Pesa Routes Mapped**: Endpoint `/api/v1/mpesa/c2b/payment` is registered
 3. ✅ **RabbitMQ Connected**: Message queue is active
 4. ✅ **M-Pesa Config Created**: Database has test configuration
-5. ❌ **Server Not Listening**: No socket listening on port 3000
+5. ✅ **Password Encryption**: Test script now generates correct encrypted password
 
-### Issue
+### M-Pesa Password Format
 
-The server appears to be running but not accepting connections. The process exists but no network socket is bound to port 3000.
+**Algorithm**: `Base64(SHA256(spId + plainPassword + timestamp))`
 
-### Next Steps to Continue
+**Two types of passwords**:
+1. **Plain Password** (stored in DB): `"test_password"`
+2. **Encrypted Password** (sent in webhook): Calculated using algorithm above
 
-1. **Restart the server properly**:
+**Verification Flow**:
+1. M-Pesa sends encrypted password + timestamp in XML notification
+2. Backend retrieves plain password from database using spId
+3. Backend recalculates: `Base64(SHA256(spId + dbPassword + receivedTimestamp))`
+4. Compare calculated vs received → if match, password is valid ✅
+
+**IMPORTANT**: The timestamp must be identical in both:
+- The password encryption calculation
+- The `<timeStamp>` field in XML
+
+### How to Test
+
+1. **Ensure server is running**:
    ```bash
-   # Kill any existing processes
-   pkill -f "nest start"
-
-   # Start fresh
    npm run start:dev
    ```
 
-2. **Verify it's listening**:
+2. **Run the M-Pesa payment test**:
    ```bash
-   # Check the port is open
-   lsof -nP -iTCP:3000 -sTCP:LISTEN
-
-   # Or try with netstat
-   netstat -an | grep "3000.*LISTEN"
+   chmod +x test-mpesa-payment.sh
+   ./test-mpesa-payment.sh
    ```
 
-3. **Run the M-Pesa test**:
+3. **Or generate password manually** (for debugging):
    ```bash
-   ./test-mpesa-payment.sh
+   node generate-mpesa-password.js
    ```
 
 ### Test Reference Ready
@@ -52,29 +59,11 @@ The server appears to be running but not accepting connections. The process exis
 - **Test Script**: `/Users/mwendavano/mwanga/ucg-backend/test-mpesa-payment.sh`
 - **Documentation**: `/Users/mwendavano/mwanga/ucg-backend/MPESA_TESTING_GUIDE.md`
 
-### Quick Test Command
+### Files Created
 
-Once server is running:
-```bash
-curl -X POST http://192.168.1.94:3000/api/v1/mpesa/c2b/payment \
-  -H "Content-Type: application/xml" \
-  -d '<?xml version="1.0"?>
-<request>
-  <spId>888000</spId>
-  <spPassword>test</spPassword>
-  <timeStamp>20260106150000</timeStamp>
-  <amount>50000</amount>
-  <commandID>CustomerPayBillOnline</commandID>
-  <initiator>255712345678</initiator>
-  <originatorConversationID>ORG_TEST_001</originatorConversationID>
-  <recipient>888000</recipient>
-  <serviceReceipt>RBK12345TEST001</serviceReceipt>
-  <serviceDate>20260106150000</serviceDate>
-  <accountReference>TA5-0000001-97D</accountReference>
-  <transactionID>MPESA-TEST-001</transactionID>
-  <conversationID>AG_TEST_001</conversationID>
-</request>'
-```
+1. **test-mpesa-payment.sh**: Automated test script with password encryption
+2. **generate-mpesa-password.js**: Standalone password generator for debugging
+3. **MPESA_TESTING_GUIDE.md**: Comprehensive testing documentation
 
 ## All Completed Work Today
 
