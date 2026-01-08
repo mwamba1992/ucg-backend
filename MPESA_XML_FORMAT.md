@@ -284,7 +284,7 @@ Run the provided test script:
 ### Manual Test with curl
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/mpesa/c2b/payment \
+curl -X POST http://localhost:8000/api/v1/vodacom/transaction \
   -H "Content-Type: application/xml" \
   -d '<?xml version="1.0" encoding="UTF-8"?>
 <mpesaBroker xmlns="http://inforwise.co.tz/broker/" version="2.0">

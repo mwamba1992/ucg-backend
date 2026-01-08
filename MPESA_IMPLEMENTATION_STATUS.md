@@ -83,7 +83,7 @@ queueCallback(callback: MpesaCallbackMessage): void
 
 **PUBLIC (No Auth):**
 ```typescript
-POST /api/v1/mpesa/c2b/payment
+POST /api/v1/vodacom/transaction
 - Receive M-Pesa notifications
 - Must respond < 2 seconds
 - Queue for processing
@@ -162,7 +162,7 @@ MPESA_CALLBACK_URL=http://mpesa-api-url/callback
 UCG_GL_ACCOUNT=1000000001
 
 # M-Pesa Webhook (for testing)
-MPESA_WEBHOOK_URL=http://your-api/api/v1/mpesa/c2b/payment
+MPESA_WEBHOOK_URL=http://your-api/api/v1/vodacom/transaction
 ```
 
 ### Testing

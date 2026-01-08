@@ -3,7 +3,7 @@
 ## Configuration
 
 - **Server URL**: `http://192.168.1.94:3000`
-- **Endpoint**: `/api/v1/mpesa/c2b/payment`
+- **Endpoint**: `/api/v1/vodacom/transaction`
 - **Method**: POST
 - **Content-Type**: `application/xml`
 
@@ -63,7 +63,7 @@ Encrypted Password = Zt48QUJ1noCfaWeVPD8VxctlbG8QiSJDSx36wzjWtww=
 ## CURL Command
 
 ```bash
-curl -X POST http://192.168.1.94:3000/api/v1/mpesa/c2b/payment \
+curl -X POST http://192.168.1.94:3000/api/v1/vodacom/transaction \
   -H "Content-Type: application/xml" \
   -d '<?xml version="1.0" encoding="UTF-8"?>
 <mpesaBroker xmlns="http://inforwise.co.tz/broker/" version="2.0">
@@ -243,7 +243,7 @@ chmod +x test-mpesa-payment.sh
 If using Postman:
 
 1. **Method**: POST
-2. **URL**: `http://192.168.1.94:3000/api/v1/mpesa/c2b/payment`
+2. **URL**: `http://192.168.1.94:3000/api/v1/vodacom/transaction`
 3. **Headers**:
    - `Content-Type`: `application/xml`
 4. **Body** (raw, XML): Paste the XML payload above

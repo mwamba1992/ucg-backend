@@ -65,6 +65,21 @@ export class MpesaSyncResponseDto {
 /**
  * Callback DTO
  * Result sent back to M-Pesa after processing
+ *
+ * XML Format:
+ * <mpesaBroker>
+ *   <result>
+ *     <serviceProvider>...</serviceProvider>
+ *     <transaction>
+ *       <resultType>Completed</resultType>
+ *       <resultCode>0</resultCode> (0 for success, 999 for failure)
+ *       <resultDesc>Successful</resultDesc>
+ *       <serviceReceipt>5BL716QNJBB</serviceReceipt>
+ *       <serviceDate>2019-02-21 13:20:27</serviceDate>
+ *       ...
+ *     </transaction>
+ *   </result>
+ * </mpesaBroker>
  */
 export class MpesaCallbackDto {
   // Service Provider
@@ -75,12 +90,12 @@ export class MpesaCallbackDto {
   // Transaction Result
   resultType: string; // "Completed" or "Failed"
   resultCode: string; // "0" for success, "999" for failure
-  resultDesc: string; // Description
-  serviceReceipt: string; // M-Pesa receipt
-  serviceDate: string; // ISO date
+  resultDesc: string; // "Successful" or failure reason
+  serviceReceipt: string; // M-Pesa receipt number
+  serviceDate: string; // Date format: YYYY-MM-DD HH:mm:ss
   originatorConversationID: string;
   conversationID: string;
   transactionID: string;
-  initiator: string;
-  initiatorPassword: string;
+  initiator: string; // e.g., "ibm_in"
+  initiatorPassword: string; // Encrypted password
 }

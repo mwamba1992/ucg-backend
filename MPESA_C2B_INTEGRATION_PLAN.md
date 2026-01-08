@@ -15,7 +15,7 @@ This integration enables customers to pay via M-Pesa and automatically settle fu
    - Account Reference: MW1-0000123-789 (UCG payment reference)
 
 2. M-Pesa → UCG API (XML Notification)
-   POST /api/v1/mpesa/c2b/payment
+   POST /api/v1/vodacom/transaction
 
 3. UCG API → M-Pesa (Immediate Response)
    - responseCode: 0
@@ -291,7 +291,7 @@ async processMpesaPayment(mpesaTransaction: MpesaTransaction) {
 ### 1. Webhook Endpoint (Public - M-Pesa calls this)
 
 ```typescript
-POST /api/v1/mpesa/c2b/payment
+POST /api/v1/vodacom/transaction
 Content-Type: application/xml
 
 // Receives M-Pesa notification
@@ -373,7 +373,7 @@ MPESA_SP_PASSWORD=your-plain-password
 MPESA_INITIATOR=ibm_in
 MPESA_INITIATOR_PASSWORD=initiator-password
 MPESA_CALLBACK_URL=http://mpesa-callback-url
-MPESA_WEBHOOK_URL=http://your-api/api/v1/mpesa/c2b/payment
+MPESA_WEBHOOK_URL=http://your-api/api/v1/vodacom/transaction
 
 # CBS Configuration
 UCG_GL_ACCOUNT=1000000001  # UCG main GL account

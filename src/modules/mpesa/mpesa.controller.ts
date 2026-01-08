@@ -22,8 +22,8 @@ import { MpesaService } from './mpesa.service';
 import { MpesaProducer } from './mpesa.producer';
 import { MpesaPaymentMessage } from './dto/mpesa-queue.dto';
 
-@ApiTags('M-Pesa')
-@Controller('mpesa')
+@ApiTags('Vodacom')
+@Controller('vodacom')
 export class MpesaController {
   private readonly logger = new Logger(MpesaController.name);
 
@@ -33,16 +33,16 @@ export class MpesaController {
   ) {}
 
   /**
-   * PUBLIC ENDPOINT: M-Pesa C2B Payment Notification Webhook
-   * This endpoint receives payment notifications from M-Pesa
+   * PUBLIC ENDPOINT: Vodacom M-Pesa Transaction Notification Webhook
+   * This endpoint receives payment notifications from Vodacom M-Pesa
    * MUST respond within 2 seconds
    */
   @Public()
-  @Post('c2b/payment')
+  @Post('transaction')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Receive M-Pesa C2B payment notification',
-    description: 'Public webhook endpoint for M-Pesa payment notifications. Responds immediately and queues for async processing.',
+    summary: 'Receive Vodacom M-Pesa transaction notification',
+    description: 'Public webhook endpoint for Vodacom M-Pesa payment notifications. Responds immediately and queues for async processing.',
   })
   @ApiResponse({
     status: 200,

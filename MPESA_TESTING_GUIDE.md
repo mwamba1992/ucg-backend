@@ -13,7 +13,7 @@ This guide explains how to test M-Pesa payments in the UCG Backend system.
 ## M-Pesa Payment Flow
 
 ### 1. **Webhook Receives Notification** (Public Endpoint)
-- **Endpoint**: `POST /api/v1/mpesa/c2b/payment`
+- **Endpoint**: `POST /api/v1/vodacom/transaction`
 - **Content-Type**: `application/xml`
 - **Public**: No authentication required (called by M-Pesa servers)
 
@@ -43,7 +43,7 @@ This guide explains how to test M-Pesa payments in the UCG Backend system.
 
 ### Option 2: Using cURL
 ```bash
-curl -X POST http://localhost:8000/api/v1/mpesa/c2b/payment \
+curl -X POST http://localhost:8000/api/v1/vodacom/transaction \
   -H "Content-Type: application/xml" \
   -d '<?xml version="1.0" encoding="UTF-8"?>
 <request>

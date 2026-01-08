@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# M-Pesa C2B Payment Test Script
-# This script simulates an M-Pesa payment notification
+# Vodacom M-Pesa Transaction Test Script
+# This script simulates a Vodacom M-Pesa payment notification
 
 # Server URL
 SERVER_URL="http://192.168.1.94:3000"
@@ -54,7 +54,7 @@ EOF
 )
 
 echo "======================================"
-echo "M-PESA PAYMENT TEST"
+echo "VODACOM M-PESA TRANSACTION TEST"
 echo "======================================"
 echo ""
 echo "Reference Number: ${REFERENCE_NUMBER}"
@@ -67,9 +67,9 @@ echo ""
 echo "Sending payment notification..."
 echo ""
 
-# Send M-Pesa notification
+# Send Vodacom M-Pesa notification
 RESPONSE=$(curl -s -w "\n%{http_code}" \
-  -X POST "${SERVER_URL}/api/v1/mpesa/c2b/payment" \
+  -X POST "${SERVER_URL}/api/v1/vodacom/transaction" \
   -H "Content-Type: application/xml" \
   -d "${XML_PAYLOAD}")
 

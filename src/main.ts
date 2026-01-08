@@ -49,11 +49,11 @@ async function bootstrap() {
   app.enableCors();
 
   // Configure body parser for XML endpoints
-  // Use raw body parser for XML webhooks (M-Pesa, TigoPesa)
-  app.use('/api/v1/mpesa/c2b/payment', bodyParser.text({ type: 'application/xml' }));
-  app.use('/api/v1/mpesa/c2b/payment', bodyParser.text({ type: 'text/xml' }));
-  app.use('/api/v1/tigopesa/billpay', bodyParser.text({ type: 'application/xml' }));
-  app.use('/api/v1/tigopesa/billpay', bodyParser.text({ type: 'text/xml' }));
+  // Use raw body parser for XML webhooks (Vodacom M-Pesa, Mixx TigoPesa)
+  app.use('/api/v1/vodacom/transaction', bodyParser.text({ type: 'application/xml' }));
+  app.use('/api/v1/vodacom/transaction', bodyParser.text({ type: 'text/xml' }));
+  app.use('/api/v1/mixx/transaction', bodyParser.text({ type: 'application/xml' }));
+  app.use('/api/v1/mixx/transaction', bodyParser.text({ type: 'text/xml' }));
 
   // Global validation pipe
   app.useGlobalPipes(

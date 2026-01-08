@@ -12,8 +12,15 @@ export class TigoPesaProducer {
   ) {}
 
   /**
-   * Queue TigoPesa payment for async processing
-   * This is called immediately after receiving TigoPesa notification
+   * [BACKUP/FALLBACK] Queue TigoPesa payment for async processing
+   *
+   * NOTE: This is kept as a backup method for future use.
+   * Currently, TigoPesa processes synchronously in the webhook endpoint.
+   * This async queue can be re-enabled later if needed for:
+   * - High volume processing
+   * - Long-running operations
+   * - Retry mechanisms
+   *
    * Fire-and-forget pattern for fast webhook response
    */
   emitPaymentProcessing(message: TigoPesaPaymentMessage): void {

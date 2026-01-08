@@ -191,7 +191,7 @@ export class MpesaService {
         xmlns: 'http://inforwise.co.tz/broker/',
         version: '2.0',
       },
-      request: {
+      result: {
         serviceProvider: {
           spId: callback.spId,
           spPassword: callback.spPassword,
@@ -201,8 +201,8 @@ export class MpesaService {
           resultType: callback.resultType,
           resultCode: callback.resultCode,
           resultDesc: callback.resultDesc,
-          mpesaReceipt: callback.serviceReceipt,
-          transactionDate: callback.serviceDate,
+          serviceReceipt: callback.serviceReceipt,
+          serviceDate: callback.serviceDate,
           originatorConversationID: callback.originatorConversationID,
           conversationID: callback.conversationID,
           transactionID: callback.transactionID,

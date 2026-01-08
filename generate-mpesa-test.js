@@ -52,7 +52,7 @@ const xml = `<?xml version="1.0" encoding="UTF-8"?>
 </mpesaBroker>`;
 
 console.log('='.repeat(80));
-console.log('M-PESA TEST PAYLOAD GENERATOR');
+console.log('VODACOM M-PESA TEST PAYLOAD GENERATOR');
 console.log('='.repeat(80));
 console.log('');
 console.log('Generated Values:');
@@ -65,7 +65,7 @@ console.log('='.repeat(80));
 console.log('CURL COMMAND:');
 console.log('='.repeat(80));
 console.log('');
-console.log(`curl -X POST http://localhost:3000/api/v1/mpesa/c2b/payment \\
+console.log(`curl -X POST http://localhost:3000/api/v1/vodacom/transaction \\
   -H "Content-Type: application/xml" \\
   -d '${xml.replace(/\n/g, '\\n')}'`);
 console.log('');

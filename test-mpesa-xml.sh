@@ -1,17 +1,17 @@
 #!/bin/bash
 
-# Test M-Pesa C2B Payment Notification with correct XML format
-# Endpoint: POST /api/v1/mpesa/c2b/payment
+# Test Vodacom M-Pesa Transaction Notification with correct XML format
+# Endpoint: POST /api/v1/vodacom/transaction
 
 echo "======================================"
-echo "M-Pesa C2B Payment Notification Test"
+echo "Vodacom M-Pesa Transaction Notification Test"
 echo "======================================"
 echo ""
 
 # Note: The spPassword should be SHA-256 hash of: spId + plainPassword + timestamp
 # Example: SHA256("400205" + "your-password" + "20190221124032") | base64
 
-curl -X POST http://localhost:8000/api/v1/mpesa/c2b/payment \
+curl -X POST http://localhost:8000/api/v1/vodacom/transaction \
   -H "Content-Type: application/xml" \
   -d '<?xml version="1.0" encoding="UTF-8"?>
 <mpesaBroker xmlns="http://inforwise.co.tz/broker/" version="2.0">

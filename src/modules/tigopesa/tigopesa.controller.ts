@@ -26,8 +26,8 @@ import {
 } from './dto/tigopesa-notification.dto';
 import { TigoPesaPaymentMessage } from './dto/tigopesa-queue.dto';
 
-@ApiTags('TigoPesa')
-@Controller('tigopesa')
+@ApiTags('Mixx')
+@Controller('mixx')
 export class TigoPesaController {
   private readonly logger = new Logger(TigoPesaController.name);
 
@@ -37,16 +37,17 @@ export class TigoPesaController {
   ) {}
 
   /**
-   * PUBLIC ENDPOINT: TigoPesa W2A Bill Payment Webhook
-   * This endpoint receives payment notifications from TigoPesa
-   * MUST respond quickly (synchronous)
+   * PUBLIC ENDPOINT: Mixx TigoPesa Transaction Webhook
+   * This endpoint receives payment notifications from Mixx (TigoPesa)
+   * Processes synchronously for immediate response with actual result
+   * Falls back to async queue processing if sync processing fails
    */
   @Public()
-  @Post('billpay')
+  @Post('transaction')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Receive TigoPesa bill payment notification',
-    description: 'Public webhook endpoint for TigoPesa W2A payment notifications. Responds immediately and queues for async processing.',
+    summary: 'Receive Mixx TigoPesa transaction notification',
+    description: 'Public webhook endpoint for Mixx TigoPesa payment notifications. Processes synchronously with fallback to async queue.',
   })
   @ApiResponse({
     status: 200,
@@ -116,7 +117,9 @@ export class TigoPesaController {
       // Create transaction record
       await this.tigopesaService.createTransaction(notification);
 
-      // Queue for async processing (fire-and-forget)
+      // Process payment synchronously
+      this.logger.log(`Processing TigoPesa payment synchronously: ${notification.TXNID}`);
+
       const message: TigoPesaPaymentMessage = {
         txnId: notification.TXNID,
         msisdn: notification.MSISDN,
@@ -126,22 +129,44 @@ export class TigoPesaController {
         senderName: notification.SENDERNAME,
       };
 
-      this.tigopesaProducer.emitPaymentProcessing(message);
+      const processingResult = await this.tigopesaService.processPayment(message);
 
-      this.logger.log(`TigoPesa payment queued for processing: ${notification.TXNID}`);
+      let response: TigoPesaBillPayResponseDto;
 
-      // Build and return success response (XML)
-      const response: TigoPesaBillPayResponseDto = {
-        TYPE: 'SYNC_BILLPAY_RESPONSE',
-        TXNID: notification.TXNID,
-        REFID: 'PENDING', // Will be updated after processing
-        RESULT: TigoPesaResult.SUCCESS,
-        ERRORCODE: TigoPesaErrorCode.SUCCESS,
-        ERRORDESC: '',
-        MSISDN: notification.MSISDN,
-        FLAG: 'Y',
-        CONTENT: 'Payment received and being processed',
-      };
+      if (processingResult.success) {
+        // Success response with actual REFID
+        response = {
+          TYPE: 'SYNC_BILLPAY_RESPONSE',
+          TXNID: notification.TXNID,
+          REFID: processingResult.refId,
+          RESULT: TigoPesaResult.SUCCESS,
+          ERRORCODE: TigoPesaErrorCode.SUCCESS,
+          ERRORDESC: '',
+          MSISDN: notification.MSISDN,
+          FLAG: 'Y',
+          CONTENT: 'Payment processed successfully',
+        };
+
+        this.logger.log(
+          `TigoPesa payment processed successfully: ${notification.TXNID} - REFID: ${processingResult.refId}`,
+        );
+      } else {
+        // Validation or processing error - return specific error
+        response = {
+          TYPE: 'SYNC_BILLPAY_RESPONSE',
+          TXNID: notification.TXNID,
+          REFID: 'ERROR',
+          RESULT: TigoPesaResult.FAILURE,
+          ERRORCODE: processingResult.errorCode || TigoPesaErrorCode.GENERAL_ERROR,
+          ERRORDESC: processingResult.errorDescription || 'Payment processing failed',
+          MSISDN: notification.MSISDN,
+          FLAG: 'N',
+        };
+
+        this.logger.warn(
+          `TigoPesa payment failed: ${notification.TXNID} - ${processingResult.errorDescription}`,
+        );
+      }
 
       const responseTime = Date.now() - startTime;
       this.logger.log(`TigoPesa webhook response time: ${responseTime}ms`);
