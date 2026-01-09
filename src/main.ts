@@ -41,6 +41,41 @@ async function bootstrap() {
     },
   });
 
+  // Connect RabbitMQ microservice for M-Pesa payment processing queue
+  app.connectMicroservice<MicroserviceOptions>({
+    transport: Transport.RMQ,
+    options: {
+      urls: [process.env.RABBITMQ_URL || 'amqp://localhost:5672'],
+      queue: 'ucg.mpesa.payment.processing',
+      queueOptions: {
+        durable: true,
+        arguments: {
+          'x-message-ttl': 3600000, // 1 hour message TTL
+          'x-max-priority': 10,
+        },
+      },
+      noAck: false,
+      prefetchCount: 1, // Process one M-Pesa payment at a time
+    },
+  });
+
+  // Connect RabbitMQ microservice for M-Pesa callback queue
+  app.connectMicroservice<MicroserviceOptions>({
+    transport: Transport.RMQ,
+    options: {
+      urls: [process.env.RABBITMQ_URL || 'amqp://localhost:5672'],
+      queue: 'ucg.mpesa.callback',
+      queueOptions: {
+        durable: true,
+        arguments: {
+          'x-message-ttl': 3600000,
+        },
+      },
+      noAck: false,
+      prefetchCount: 1,
+    },
+  });
+
   // Global prefix
   const apiPrefix = process.env.API_PREFIX || 'api/v1';
   app.setGlobalPrefix(apiPrefix);

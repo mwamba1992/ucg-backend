@@ -36,7 +36,7 @@ import { CBSModule } from '../cbs/cbs.module';
               },
             },
             prefetchCount: 1, // Process one message at a time
-            noAck: false, // Manual acknowledgment
+            // Note: noAck should NOT be set for ClientProxy (producer side)
           },
         }),
         inject: [ConfigService],
