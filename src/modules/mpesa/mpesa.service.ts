@@ -58,17 +58,12 @@ export class MpesaService {
       // Clean the XML body (remove any leading/trailing whitespace)
       const cleanedXml = xmlBody.trim();
 
-      this.logger.debug(`Parsing XML body, length: ${cleanedXml.length}`);
-      this.logger.debug(`XML starts with: ${cleanedXml.substring(0, 50)}`);
-
       const parser = new xml2js.Parser({
         explicitArray: false,
         trim: true,
         normalize: true,
       });
       const result = await parser.parseStringPromise(cleanedXml);
-
-      this.logger.debug(`Parsed result keys: ${Object.keys(result).join(', ')}`);
 
       // Extract data from mpesaBroker structure
       const mpesaBroker = result.mpesaBroker || result;

@@ -75,11 +75,6 @@ export class MpesaController {
     try {
       this.logger.log('M-Pesa C2B payment notification received');
 
-      // Log raw body for debugging
-      this.logger.debug(`Raw body type: ${typeof xmlBody}`);
-      this.logger.debug(`Raw body length: ${xmlBody?.length || 0}`);
-      this.logger.debug(`First 100 chars: ${xmlBody?.substring(0, 100)}`);
-
       // Parse XML notification
       notification = await this.mpesaService.parseXmlNotification(xmlBody);
 

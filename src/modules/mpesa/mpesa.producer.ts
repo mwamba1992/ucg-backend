@@ -30,10 +30,6 @@ export class MpesaProducer {
         RABBITMQ_ROUTING_KEYS.MPESA_PAYMENT_PROCESS,
         message,
       );
-
-      this.logger.debug(
-        `Payment queued successfully: ${message.mpesaReceipt}`,
-      );
     } catch (error) {
       this.logger.error(
         `Failed to queue M-Pesa payment: ${error.message}`,
@@ -59,8 +55,6 @@ export class MpesaProducer {
         RABBITMQ_ROUTING_KEYS.MPESA_CALLBACK_SEND,
         message,
       );
-
-      this.logger.debug(`Callback queued: ${message.conversationId}`);
     } catch (error) {
       this.logger.error(
         `Failed to queue M-Pesa callback: ${error.message}`,

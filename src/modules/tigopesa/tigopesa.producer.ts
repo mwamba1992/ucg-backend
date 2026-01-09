@@ -33,8 +33,6 @@ export class TigoPesaProducer {
         RABBITMQ_ROUTING_KEYS.TIGOPESA_PAYMENT_PROCESS,
         message,
       );
-
-      this.logger.debug(`Payment queued successfully: ${message.txnId}`);
     } catch (error) {
       this.logger.error(
         `Failed to queue TigoPesa payment: ${error.message}`,
