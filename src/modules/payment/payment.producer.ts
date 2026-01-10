@@ -130,19 +130,11 @@ export class PaymentProducer {
   }
 
   /**
-   * Called when the module is initialized
+   * NOTE: We don't call connect() explicitly because:
+   * 1. Calling connect() creates a reply queue for RPC which can cause issues
+   * 2. The client will auto-connect on first emit()/send()
+   * 3. This avoids the 406 PRECONDITION_FAILED error with reply queues
    */
-  async onModuleInit() {
-    try {
-      await this.paymentClient.connect();
-      this.logger.log('Payment producer connected to RabbitMQ');
-    } catch (error) {
-      this.logger.error(
-        `Failed to connect payment producer to RabbitMQ: ${error.message}`,
-        error.stack,
-      );
-    }
-  }
 
   /**
    * Called when the module is destroyed

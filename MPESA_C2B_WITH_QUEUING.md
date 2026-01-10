@@ -9,7 +9,7 @@
 
 Step 1: M-Pesa Notification (Sync)
 ────────────────────────────────────
-M-Pesa → POST /api/v1/mpesa/c2b/payment (XML)
+M-Pesa → POST /api/v1/vodacom/transaction (XML)
          │
          ├─ Parse XML
          ├─ Basic validation (format, required fields)

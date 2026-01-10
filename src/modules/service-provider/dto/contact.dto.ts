@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IdType } from '../entities/service-provider-contact.entity';
 
 export class CreateContactDto {
   @ApiProperty({
@@ -29,14 +30,23 @@ export class CreateContactDto {
   @MaxLength(100)
   email: string;
 
-  @ApiPropertyOptional({
-    description: 'Contact person NIDA number',
+  @ApiProperty({
+    description: 'Type of identification document',
+    enum: IdType,
+    example: IdType.NIDA,
+  })
+  @IsNotEmpty()
+  @IsEnum(IdType)
+  idType: IdType;
+
+  @ApiProperty({
+    description: 'Identification number',
     example: '19901231-12345-67890-12',
   })
-  @IsOptional()
+  @IsNotEmpty()
   @IsString()
   @MaxLength(100)
-  idNumber?: string;
+  idNumber: string;
 
   @ApiPropertyOptional({
     description: 'Job title or position',

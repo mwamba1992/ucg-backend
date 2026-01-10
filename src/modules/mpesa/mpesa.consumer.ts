@@ -210,6 +210,7 @@ export class MpesaConsumer {
       'Reference not found',
       'Reference expired',
       'Reference already used',
+      'Reference USED',
       'Amount mismatch',
       'Invalid amount',
     ];

@@ -60,10 +60,20 @@ export class CreatePaymentDto {
     description: 'Payment Channel, method used to pay',
     example: 'Bank',
     default: 'Bank',
-  })@IsNotEmpty()
+  })
+  @IsNotEmpty()
   @IsString()
   @MaxLength(10)
   paymentChannel?: string;
+
+  @ApiProperty({
+    description: 'Financial Service Provider Code (e.g., VODACOM, TIGO, CRDB)',
+    example: 'VODACOM',
+  })
+  @IsNotEmpty()
+  @IsString()
+  @MaxLength(50)
+  fspCode: string;
 
   @ApiPropertyOptional({
     description: 'Transaction ID (if applicable)',

@@ -5,11 +5,12 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, ILike, IsNull } from 'typeorm';
+import { Repository, ILike, IsNull, MoreThanOrEqual, LessThanOrEqual, Between } from 'typeorm';
 import {
   FinancialServiceProvider,
   FspStatus,
 } from './entities/financial-service-provider.entity';
+import { Payment, PaymentStatus } from '../payment/entities/payment.entity';
 import { CreateFspDto } from './dto/create-fsp.dto';
 import { UpdateFspDto } from './dto/update-fsp.dto';
 import { QueryFspDto } from './dto/query-fsp.dto';
@@ -20,6 +21,8 @@ export class FinancialServiceProviderService {
   constructor(
     @InjectRepository(FinancialServiceProvider)
     private readonly fspRepository: Repository<FinancialServiceProvider>,
+    @InjectRepository(Payment)
+    private readonly paymentRepository: Repository<Payment>,
   ) {}
 
   /**
@@ -293,6 +296,287 @@ export class FinancialServiceProviderService {
     fsp.lastTransactionAt = new Date();
 
     await this.fspRepository.save(fsp);
+  }
+
+  /**
+   * Get payment report for a specific FSP
+   */
+  async getPaymentReport(
+    fspCode: string,
+    startDate?: Date,
+    endDate?: Date,
+  ): Promise<{
+    fspCode: string;
+    fspName: string;
+    period: { startDate?: Date; endDate?: Date };
+    summary: {
+      totalPayments: number;
+      totalAmount: number;
+      successfulPayments: number;
+      successfulAmount: number;
+      failedPayments: number;
+      failedAmount: number;
+      pendingPayments: number;
+      pendingAmount: number;
+      successRate: number;
+    };
+    byStatus: Array<{ status: string; count: number; amount: number }>;
+    byServiceProvider: Array<{
+      spCode: string;
+      count: number;
+      amount: number;
+    }>;
+  }> {
+    // Verify FSP exists
+    const fsp = await this.fspRepository.findOne({
+      where: { fspCode, deletedAt: IsNull() },
+    });
+
+    if (!fsp) {
+      throw new NotFoundException(`FSP with code '${fspCode}' not found`);
+    }
+
+    // Build query for payments
+    const queryBuilder = this.paymentRepository
+      .createQueryBuilder('payment')
+      .where('payment.fspCode = :fspCode', { fspCode });
+
+    if (startDate) {
+      queryBuilder.andWhere('payment.paidAt >= :startDate', { startDate });
+    }
+
+    if (endDate) {
+      queryBuilder.andWhere('payment.paidAt <= :endDate', { endDate });
+    }
+
+    const payments = await queryBuilder.getMany();
+
+    // Calculate summary statistics
+    const totalPayments = payments.length;
+    const totalAmount = payments.reduce(
+      (sum, p) => sum + Number(p.amountPaid),
+      0,
+    );
+
+    const successfulPayments = payments.filter(
+      (p) => p.status === PaymentStatus.SUCCESS,
+    );
+    const successfulAmount = successfulPayments.reduce(
+      (sum, p) => sum + Number(p.amountPaid),
+      0,
+    );
+
+    const failedPayments = payments.filter(
+      (p) =>
+        p.status === PaymentStatus.FAILED ||
+        p.status === PaymentStatus.REVERSED,
+    );
+    const failedAmount = failedPayments.reduce(
+      (sum, p) => sum + Number(p.amountPaid),
+      0,
+    );
+
+    const pendingPayments = payments.filter(
+      (p) => p.status === PaymentStatus.PENDING,
+    );
+    const pendingAmount = pendingPayments.reduce(
+      (sum, p) => sum + Number(p.amountPaid),
+      0,
+    );
+
+    const successRate =
+      totalPayments > 0
+        ? (successfulPayments.length / totalPayments) * 100
+        : 0;
+
+    // Group by status
+    const byStatus = Object.values(PaymentStatus).map((status) => {
+      const statusPayments = payments.filter((p) => p.status === status);
+      return {
+        status,
+        count: statusPayments.length,
+        amount: statusPayments.reduce((sum, p) => sum + Number(p.amountPaid), 0),
+      };
+    });
+
+    // Group by service provider (using referenceNumber prefix)
+    const spGroups = payments.reduce((acc, payment) => {
+      const spCode = payment.referenceNumber?.split('-')[0] || 'UNKNOWN';
+      if (!acc[spCode]) {
+        acc[spCode] = { spCode, count: 0, amount: 0 };
+      }
+      acc[spCode].count++;
+      acc[spCode].amount += Number(payment.amountPaid);
+      return acc;
+    }, {} as Record<string, { spCode: string; count: number; amount: number }>);
+
+    return {
+      fspCode: fsp.fspCode,
+      fspName: fsp.name,
+      period: { startDate, endDate },
+      summary: {
+        totalPayments,
+        totalAmount,
+        successfulPayments: successfulPayments.length,
+        successfulAmount,
+        failedPayments: failedPayments.length,
+        failedAmount,
+        pendingPayments: pendingPayments.length,
+        pendingAmount,
+        successRate: Number(successRate.toFixed(2)),
+      },
+      byStatus: byStatus.filter((s) => s.count > 0),
+      byServiceProvider: Object.values(spGroups),
+    };
+  }
+
+  /**
+   * Get payment reports for all FSPs
+   */
+  async getAllFspReports(
+    startDate?: Date,
+    endDate?: Date,
+  ): Promise<
+    Array<{
+      fspCode: string;
+      fspName: string;
+      totalPayments: number;
+      totalAmount: number;
+      successfulPayments: number;
+      successRate: number;
+    }>
+  > {
+    const fsps = await this.fspRepository.find({
+      where: { deletedAt: IsNull() },
+    });
+
+    const reports = await Promise.all(
+      fsps.map(async (fsp) => {
+        const queryBuilder = this.paymentRepository
+          .createQueryBuilder('payment')
+          .where('payment.fspCode = :fspCode', { fspCode: fsp.fspCode });
+
+        if (startDate) {
+          queryBuilder.andWhere('payment.paidAt >= :startDate', {
+            startDate,
+          });
+        }
+
+        if (endDate) {
+          queryBuilder.andWhere('payment.paidAt <= :endDate', { endDate });
+        }
+
+        const payments = await queryBuilder.getMany();
+
+        const totalPayments = payments.length;
+        const totalAmount = payments.reduce(
+          (sum, p) => sum + Number(p.amountPaid),
+          0,
+        );
+
+        const successfulPayments = payments.filter(
+          (p) => p.status === PaymentStatus.SUCCESS,
+        ).length;
+
+        const successRate =
+          totalPayments > 0 ? (successfulPayments / totalPayments) * 100 : 0;
+
+        return {
+          fspCode: fsp.fspCode,
+          fspName: fsp.name,
+          totalPayments,
+          totalAmount,
+          successfulPayments,
+          successRate: Number(successRate.toFixed(2)),
+        };
+      }),
+    );
+
+    return reports.sort((a, b) => b.totalAmount - a.totalAmount);
+  }
+
+  /**
+   * Get daily transaction trend for a specific FSP
+   */
+  async getDailyTransactionTrend(
+    fspCode: string,
+    days: number = 30,
+  ): Promise<
+    Array<{
+      date: string;
+      count: number;
+      amount: number;
+      successCount: number;
+      failedCount: number;
+    }>
+  > {
+    // Verify FSP exists
+    const fsp = await this.fspRepository.findOne({
+      where: { fspCode, deletedAt: IsNull() },
+    });
+
+    if (!fsp) {
+      throw new NotFoundException(`FSP with code '${fspCode}' not found`);
+    }
+
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+
+    const payments = await this.paymentRepository
+      .createQueryBuilder('payment')
+      .where('payment.fspCode = :fspCode', { fspCode })
+      .andWhere('payment.paidAt >= :startDate', { startDate })
+      .getMany();
+
+    // Group by date
+    const dailyMap = new Map<
+      string,
+      {
+        date: string;
+        count: number;
+        amount: number;
+        successCount: number;
+        failedCount: number;
+      }
+    >();
+
+    // Initialize all dates
+    for (let i = 0; i < days; i++) {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      const dateStr = date.toISOString().split('T')[0];
+      dailyMap.set(dateStr, {
+        date: dateStr,
+        count: 0,
+        amount: 0,
+        successCount: 0,
+        failedCount: 0,
+      });
+    }
+
+    // Aggregate payments
+    payments.forEach((payment) => {
+      const dateStr = payment.paidAt.toISOString().split('T')[0];
+      const daily = dailyMap.get(dateStr);
+
+      if (daily) {
+        daily.count++;
+        daily.amount += Number(payment.amountPaid);
+
+        if (payment.status === PaymentStatus.SUCCESS) {
+          daily.successCount++;
+        } else if (
+          payment.status === PaymentStatus.FAILED ||
+          payment.status === PaymentStatus.REVERSED
+        ) {
+          daily.failedCount++;
+        }
+      }
+    });
+
+    return Array.from(dailyMap.values()).sort(
+      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+    );
   }
 
   /**

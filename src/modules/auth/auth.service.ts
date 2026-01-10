@@ -11,7 +11,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { UserService } from '../user/user.service';
-import { User, UserStatus, UserRole } from '../user/entities/user.entity';
+import { User, UserStatus, UserRole, UserType } from '../user/entities/user.entity';
 import { ServiceProvider, OnboardingStatus, ServiceProviderType } from '../service-provider/entities/service-provider.entity';
 import { ServiceProviderContact } from '../service-provider/entities/service-provider-contact.entity';
 import { ServiceProviderBankAccount } from '../service-provider/entities/service-provider-bank-account.entity';
@@ -103,6 +103,7 @@ export class AuthService {
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
+        userType: user.userType,
         role: user.role,
         status: user.status,
       },
@@ -127,6 +128,7 @@ export class AuthService {
       email: registerDto.email,
       phoneNumber: registerDto.phoneNumber,
       password: registerDto.password,
+      userType: registerDto.userType || UserType.ADMIN,
       role: registerDto.role || UserRole.VIEWER,
       status: UserStatus.PENDING, // Default to PENDING for approval
     });
@@ -144,6 +146,7 @@ export class AuthService {
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
+        userType: user.userType,
         role: user.role,
         status: user.status,
       },
@@ -171,6 +174,7 @@ export class AuthService {
     const payload: JwtPayload = {
       sub: user.id,
       email: user.email,
+      userType: user.userType,
       role: user.role,
     };
 
@@ -196,17 +200,18 @@ export class AuthService {
     const payload: JwtPayload = {
       sub: user.id,
       email: user.email,
+      userType: user.userType,
       role: user.role,
     };
 
     const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync(payload, {
-        secret: this.configService.get<string>('JWT_SECRET', 'your-secret-key-change-this'),
-        expiresIn: '15m',
+        secret: this.configService.get<string>('JWT_SECRET') || 'your-secret-key-change-this',
+        expiresIn: '60m',
       }),
       this.jwtService.signAsync(payload, {
-        secret: this.configService.get<string>('JWT_REFRESH_SECRET', 'your-refresh-secret-change-this'),
-        expiresIn: '7d',
+        secret: this.configService.get<string>('JWT_REFRESH_SECRET') || 'your-refresh-secret-change-this',
+        expiresIn: '30d',
       }),
     ]);
 
@@ -283,6 +288,7 @@ export class AuthService {
     accessToken: string;
     refreshToken: string;
     serviceProvider: any;
+    user?: any;
   }> {
     // Find service provider by email
     const serviceProvider = await this.serviceProviderRepository.findOne({
@@ -312,6 +318,27 @@ export class AuthService {
       throw new UnauthorizedException('Service Provider account has been deleted');
     }
 
+    // Query for associated user by email (if exists)
+    let user = null;
+    try {
+      const userRecord = await this.userService.findByEmail(loginDto.email);
+      if (userRecord && userRecord.userType === UserType.SERVICE_PROVIDER) {
+        user = {
+          id: userRecord.id,
+          firstName: userRecord.firstName,
+          lastName: userRecord.lastName,
+          email: userRecord.email,
+          phoneNumber: userRecord.phoneNumber,
+          role: userRecord.role,
+          userType: userRecord.userType,
+          status: userRecord.status,
+        };
+      }
+    } catch (error) {
+      // User doesn't exist - that's ok, continue without user object
+      this.logger.warn(`No user found for SP email: ${loginDto.email}`);
+    }
+
     // Generate SP tokens
     const tokens = await this.generateSpTokens(serviceProvider);
 
@@ -327,6 +354,7 @@ export class AuthService {
         status: serviceProvider.status,
         isActive: serviceProvider.isActive,
       },
+      ...(user && { user }), // Only include user if it exists
     };
   }
 
@@ -346,12 +374,12 @@ export class AuthService {
 
     const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync(payload, {
-        secret: this.configService.get<string>('JWT_SECRET', 'your-secret-key-change-this'),
-        expiresIn: '15m',
+        secret: this.configService.get<string>('JWT_SECRET') || 'your-secret-key-change-this',
+        expiresIn: '60m',
       }),
       this.jwtService.signAsync(payload, {
-        secret: this.configService.get<string>('JWT_REFRESH_SECRET', 'your-refresh-secret-change-this'),
-        expiresIn: '7d',
+        secret: this.configService.get<string>('JWT_REFRESH_SECRET') || 'your-refresh-secret-change-this',
+        expiresIn: '30d',
       }),
     ]);
 
@@ -394,6 +422,7 @@ export class AuthService {
       const serviceProvider = this.serviceProviderRepository.create({
         businessName: registerDto.businessName,
         businessType: registerDto.businessType,
+        otherBusinessType: registerDto.otherBusinessType,
         registrationNumber: registerDto.registrationNumber,
         tinNumber: registerDto.tinNumber,
         phoneNumber: registerDto.phoneNumber,

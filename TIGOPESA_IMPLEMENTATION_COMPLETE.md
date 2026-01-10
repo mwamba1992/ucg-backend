@@ -31,7 +31,7 @@ TigoPesa W2A (Wallet to Account / Bill Payment) integration has been successfull
 
 ### 5. **API Endpoints**
 - `src/modules/tigopesa/tigopesa.controller.ts` - HTTP controller with:
-  - **PUBLIC:** `POST /api/v1/tigopesa/billpay` - TigoPesa webhook (no auth)
+  - **PUBLIC:** `POST /api/v1/mixx/transaction` - TigoPesa webhook (no auth)
   - **PROTECTED:** `GET /api/v1/tigopesa/transactions` - List transactions
   - **PROTECTED:** `GET /api/v1/tigopesa/transactions/:txnId` - Get transaction
   - **PROTECTED:** `POST /api/v1/tigopesa/transactions/:txnId/retry` - Retry failed
@@ -59,7 +59,7 @@ TigoPesa W2A (Wallet to Account / Bill Payment) integration has been successfull
 1. TigoPesa Bill Payment Notification (XML/COMMAND format)
    │
    ↓
-2. Webhook Endpoint (POST /api/v1/tigopesa/billpay)
+2. Webhook Endpoint (POST /api/v1/mixx/transaction)
    ├─ Parse XML (SYNC_BILLPAY_REQUEST)
    ├─ Validate format
    ├─ Check for duplicates
@@ -205,7 +205,7 @@ ucg.tigopesa.payment.processing  →  Payment Processing Consumer
 ```bash
 # TigoPesa Configuration
 TIGOPESA_COMPANY_NAME=12345                  # Partner company identifier
-TIGOPESA_WEBHOOK_URL=http://your-domain/api/v1/tigopesa/billpay  # For TigoPesa to call
+TIGOPESA_WEBHOOK_URL=http://your-domain/api/v1/mixx/transaction  # For TigoPesa to call
 
 # Future A2W Configuration (not implemented yet)
 # TIGOPESA_API_URL=http://tigopesa-api-url
@@ -235,7 +235,7 @@ ucg.tigopesa.payment.processing
 ### 1. Test Webhook (Simulate TigoPesa Notification)
 
 ```bash
-curl -X POST http://localhost:3000/api/v1/tigopesa/billpay \
+curl -X POST http://localhost:3000/api/v1/mixx/transaction \
   -H "Content-Type: application/xml" \
   -d '<?xml version="1.0"?>
 <COMMAND>
@@ -320,13 +320,13 @@ INSERT INTO tigopesa_config (id, "companyName", "webhookUrl", "isActive")
 VALUES (
   'UUID-HERE',
   '12345',
-  'http://your-domain/api/v1/tigopesa/billpay',
+  'http://your-domain/api/v1/mixx/transaction',
   true
 );
 ```
 
 ### 3. Configure TigoPesa Integration
-- Provide webhook URL to TigoPesa: `http://your-domain/api/v1/tigopesa/billpay`
+- Provide webhook URL to TigoPesa: `http://your-domain/api/v1/mixx/transaction`
 - Configure company name/identifier in TigoPesa system
 - Test with TigoPesa staging environment
 
@@ -371,7 +371,7 @@ VALUES (
 
 | Component | M-Pesa | TigoPesa |
 |-----------|---------|----------|
-| **Webhook Endpoint** | `/api/v1/mpesa/c2b/payment` | `/api/v1/tigopesa/billpay` |
+| **Webhook Endpoint** | `/api/v1/vodacom/transaction` | `/api/v1/mixx/transaction` |
 | **Response Pattern** | Sync response + Async callback | Sync response only |
 | **Transaction ID** | mpesaReceipt | TXNID |
 | **XML Root** | `<request>` | `<COMMAND>` |

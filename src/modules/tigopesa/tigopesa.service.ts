@@ -231,6 +231,16 @@ export class TigoPesaService {
 
   /**
    * Process TigoPesa payment (main business logic)
+   *
+   * This method is called:
+   * 1. SYNCHRONOUSLY from the webhook endpoint (primary use)
+   * 2. ASYNCHRONOUSLY from the queue consumer (backup/fallback - currently not used)
+   *
+   * Handles:
+   * - Reference validation
+   * - Payment creation
+   * - CBS transfer
+   * - Transaction status updates
    */
   async processPayment(
     message: TigoPesaPaymentMessage,
@@ -281,6 +291,7 @@ export class TigoPesaService {
         referenceNumber: message.customerReferenceId,
         amountPaid: message.amount,
         paymentChannel: 'TigoPesa',
+        fspCode: 'TIGO',
         payerName: message.senderName || message.msisdn,
         payerPhone: message.msisdn,
         transactionId: message.txnId,

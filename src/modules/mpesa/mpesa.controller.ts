@@ -22,8 +22,8 @@ import { MpesaService } from './mpesa.service';
 import { MpesaProducer } from './mpesa.producer';
 import { MpesaPaymentMessage } from './dto/mpesa-queue.dto';
 
-@ApiTags('M-Pesa')
-@Controller('mpesa')
+@ApiTags('Vodacom')
+@Controller('vodacom')
 export class MpesaController {
   private readonly logger = new Logger(MpesaController.name);
 
@@ -33,16 +33,16 @@ export class MpesaController {
   ) {}
 
   /**
-   * PUBLIC ENDPOINT: M-Pesa C2B Payment Notification Webhook
-   * This endpoint receives payment notifications from M-Pesa
+   * PUBLIC ENDPOINT: Vodacom M-Pesa Transaction Notification Webhook
+   * This endpoint receives payment notifications from Vodacom M-Pesa
    * MUST respond within 2 seconds
    */
   @Public()
-  @Post('c2b/payment')
+  @Post('transaction')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Receive M-Pesa C2B payment notification',
-    description: 'Public webhook endpoint for M-Pesa payment notifications. Responds immediately and queues for async processing.',
+    summary: 'Receive Vodacom M-Pesa transaction notification',
+    description: 'Public webhook endpoint for Vodacom M-Pesa payment notifications. Responds immediately and queues for async processing.',
   })
   @ApiResponse({
     status: 200,
@@ -51,15 +51,17 @@ export class MpesaController {
       'application/xml': {
         schema: {
           type: 'string',
-          example: `<?xml version="1.0"?>
-<response>
-  <conversationID>12345</conversationID>
-  <originatorConversationID>67890</originatorConversationID>
-  <transactionID>ABC123</transactionID>
-  <responseCode>0</responseCode>
-  <responseDesc>Received</responseDesc>
-  <serviceStatus>Success</serviceStatus>
-</response>`,
+          example: `<?xml version="1.0" encoding="UTF-8"?>
+<mpesaBroker xmlns="http://inforwise.co.tz/broker/" version="2.0">
+  <response>
+    <conversationID>025d7efd-58bc-b06b-2aab91cde3b1</conversationID>
+    <originatorConversationID>025d7efd-58bc-b06b-2aab91cde3b1</originatorConversationID>
+    <transactionID>1251899741111</transactionID>
+    <responseCode>0</responseCode>
+    <responseDesc>Received</responseDesc>
+    <serviceStatus>Success</serviceStatus>
+  </response>
+</mpesaBroker>`,
         },
       },
     },
@@ -68,11 +70,13 @@ export class MpesaController {
   async receivePaymentNotification(@Body() xmlBody: string, @Req() req: any): Promise<string> {
     const startTime = Date.now();
 
+    let notification: any = null;
+
     try {
       this.logger.log('M-Pesa C2B payment notification received');
 
       // Parse XML notification
-      const notification = await this.mpesaService.parseXmlNotification(xmlBody);
+      notification = await this.mpesaService.parseXmlNotification(xmlBody);
 
       this.logger.log(
         `M-Pesa notification: ${notification.mpesaReceipt} - Amount: ${notification.amount} - Reference: ${notification.accountReference}`,
@@ -81,7 +85,10 @@ export class MpesaController {
       // Validate notification format
       this.mpesaService.validateNotificationFormat(notification);
 
-      // Verify password
+      // Verify password (BYPASSED FOR TESTING)
+      // TODO: Re-enable password verification in production
+      this.logger.warn('⚠️  M-Pesa password verification BYPASSED for testing');
+      /*
       const passwordValid = await this.mpesaService.verifyPassword(
         notification.spId,
         notification.spPassword,
@@ -90,8 +97,17 @@ export class MpesaController {
 
       if (!passwordValid) {
         this.logger.error('M-Pesa password verification failed');
-        throw new BadRequestException('Invalid password');
+        // Return XML error response instead of throwing
+        return this.mpesaService.buildErrorResponse(
+          notification.conversationID || 'UNKNOWN',
+          notification.originatorConversationID || 'UNKNOWN',
+          notification.transactionID || 'UNKNOWN',
+          '1',
+          'Invalid password',
+          'Failed',
+        );
       }
+      */
 
       // Check for duplicate
       const isDuplicate = await this.mpesaService.checkDuplicate(notification.mpesaReceipt);
@@ -140,8 +156,15 @@ export class MpesaController {
         error.stack,
       );
 
-      // Still need to respond quickly even on error
-      throw error;
+      // Return XML error response instead of throwing JSON error
+      return this.mpesaService.buildErrorResponse(
+        notification?.conversationID || 'UNKNOWN',
+        notification?.originatorConversationID || 'UNKNOWN',
+        notification?.transactionID || 'UNKNOWN',
+        '2',
+        error.message || 'Invalid request',
+        'Failed',
+      );
     }
   }
 

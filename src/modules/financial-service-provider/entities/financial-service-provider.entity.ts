@@ -23,9 +23,13 @@ export class FinancialServiceProvider {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ unique: true, length: 10 })
+  @Column({ unique: true, length: 20 })
   @Index()
-  fspCode: string; // Unique code (e.g., VODACOM, AIRTEL, CRDB, NMB)
+  fspCode: string; // Unique code (e.g., FSP001, FSP002, or legacy: VODACOM, AIRTEL, CRDB, NMB)
+
+  @Column({ unique: true, length: 20, nullable: true })
+  @Index()
+  numericCode: string; // Numeric code format FSP001, FSP002, etc.
 
   @Column({ length: 200 })
   name: string; // Full name (e.g., Vodacom Tanzania PLC)

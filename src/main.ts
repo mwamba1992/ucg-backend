@@ -3,6 +3,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { Transport, MicroserviceOptions } from '@nestjs/microservices';
 import { AppModule } from './app.module';
+import * as bodyParser from 'body-parser';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -40,12 +41,54 @@ async function bootstrap() {
     },
   });
 
+  // Connect RabbitMQ microservice for M-Pesa payment processing queue
+  app.connectMicroservice<MicroserviceOptions>({
+    transport: Transport.RMQ,
+    options: {
+      urls: [process.env.RABBITMQ_URL || 'amqp://localhost:5672'],
+      queue: 'ucg.mpesa.payment.processing',
+      queueOptions: {
+        durable: true,
+        arguments: {
+          'x-message-ttl': 3600000, // 1 hour message TTL
+          'x-max-priority': 10,
+        },
+      },
+      noAck: false,
+      prefetchCount: 1, // Process one M-Pesa payment at a time
+    },
+  });
+
+  // Connect RabbitMQ microservice for M-Pesa callback queue
+  app.connectMicroservice<MicroserviceOptions>({
+    transport: Transport.RMQ,
+    options: {
+      urls: [process.env.RABBITMQ_URL || 'amqp://localhost:5672'],
+      queue: 'ucg.mpesa.callback',
+      queueOptions: {
+        durable: true,
+        arguments: {
+          'x-message-ttl': 3600000,
+        },
+      },
+      noAck: false,
+      prefetchCount: 1,
+    },
+  });
+
   // Global prefix
   const apiPrefix = process.env.API_PREFIX || 'api/v1';
   app.setGlobalPrefix(apiPrefix);
 
   // Enable CORS
   app.enableCors();
+
+  // Configure body parser for XML endpoints
+  // Use raw body parser for XML webhooks (Vodacom M-Pesa, Mixx TigoPesa)
+  app.use('/api/v1/vodacom/transaction', bodyParser.text({ type: 'application/xml' }));
+  app.use('/api/v1/vodacom/transaction', bodyParser.text({ type: 'text/xml' }));
+  app.use('/api/v1/mixx/transaction', bodyParser.text({ type: 'application/xml' }));
+  app.use('/api/v1/mixx/transaction', bodyParser.text({ type: 'text/xml' }));
 
   // Global validation pipe
   app.useGlobalPipes(

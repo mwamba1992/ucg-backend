@@ -4,6 +4,16 @@ import { RABBITMQ_ROUTING_KEYS } from '../../config/rabbitmq.config';
 import { TigoPesaService } from './tigopesa.service';
 import { TigoPesaPaymentMessage } from './dto/tigopesa-queue.dto';
 
+/**
+ * [BACKUP/FALLBACK] TigoPesa Async Payment Consumer
+ *
+ * NOTE: This consumer is kept as a backup for future use.
+ * Currently, TigoPesa processes payments synchronously in the webhook endpoint.
+ * This async queue consumer can be re-enabled later if needed.
+ *
+ * To use this consumer, call tigopesaProducer.emitPaymentProcessing() instead of
+ * direct synchronous processing in the controller.
+ */
 @Controller()
 export class TigoPesaConsumer {
   private readonly logger = new Logger(TigoPesaConsumer.name);
@@ -11,8 +21,11 @@ export class TigoPesaConsumer {
   constructor(private readonly tigopesaService: TigoPesaService) {}
 
   /**
-   * Process TigoPesa payment from queue
+   * [BACKUP/FALLBACK] Process TigoPesa payment from queue
    * Handles: validation, payment creation, CBS transfer
+   *
+   * This is kept for future use - currently not being called
+   * as payments are processed synchronously in the webhook.
    */
   @EventPattern(RABBITMQ_ROUTING_KEYS.TIGOPESA_PAYMENT_PROCESS)
   async handlePaymentProcessing(

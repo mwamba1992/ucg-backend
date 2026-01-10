@@ -11,7 +11,7 @@ export const typeOrmConfig = (): TypeOrmModuleOptions => ({
   entities: [__dirname + '/../**/*.entity{.ts,.js}'],
   migrations: [__dirname + '/../database/migrations/*{.ts,.js}'],
   synchronize: process.env.NODE_ENV === 'development', // Only for development
-  logging: process.env.NODE_ENV === 'development',
+  logging: false, // Disabled - use application logs instead
   ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
 });
 

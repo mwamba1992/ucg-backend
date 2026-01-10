@@ -1,6 +1,6 @@
 import { Exclude, Expose } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
-import { UserRole, UserStatus } from '../entities/user.entity';
+import { UserRole, UserStatus, UserType } from '../entities/user.entity';
 
 export class UserResponseDto {
   @ApiProperty()
@@ -22,6 +22,10 @@ export class UserResponseDto {
   @ApiProperty()
   @Expose()
   phoneNumber: string;
+
+  @ApiProperty({ enum: UserType })
+  @Expose()
+  userType: UserType;
 
   @ApiProperty({ enum: UserRole })
   @Expose()

@@ -10,9 +10,29 @@ import {
 } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 
+export enum UserType {
+  ADMIN = 'ADMIN',
+  SERVICE_PROVIDER = 'SERVICE_PROVIDER',
+}
+
 export enum UserRole {
+  // Admin Portal Roles
   SUPER_ADMIN = 'SUPER_ADMIN',
   ADMIN = 'ADMIN',
+  FINANCE_MANAGER = 'FINANCE_MANAGER',
+  OPERATIONS_MANAGER = 'OPERATIONS_MANAGER',
+  COMPLIANCE_OFFICER = 'COMPLIANCE_OFFICER',
+  SUPPORT_AGENT = 'SUPPORT_AGENT',
+  ANALYST = 'ANALYST',
+  AUDITOR = 'AUDITOR',
+
+  // Service Provider Portal Roles
+  SP_ADMIN = 'SP_ADMIN',
+  SP_FINANCE = 'SP_FINANCE',
+  SP_OPERATOR = 'SP_OPERATOR',
+  SP_VIEWER = 'SP_VIEWER',
+
+  // Legacy roles (deprecated - keeping for backward compatibility)
   MANAGER = 'MANAGER',
   OPERATOR = 'OPERATOR',
   VIEWER = 'VIEWER',
@@ -45,6 +65,14 @@ export class User {
 
   @Column({ select: false })
   password: string;
+
+  @Column({
+    type: 'enum',
+    enum: UserType,
+    default: UserType.ADMIN,
+  })
+  @Index()
+  userType: UserType;
 
   @Column({
     type: 'enum',

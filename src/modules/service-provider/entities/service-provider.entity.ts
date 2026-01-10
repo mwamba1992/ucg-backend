@@ -14,12 +14,9 @@ import { ServiceProviderSettings } from './service-provider-settings.entity';
 
 export enum ServiceProviderType {
   SCHOOL = 'SCHOOL',
-  HOSPITAL = 'HOSPITAL',
-  CHURCH = 'CHURCH',
-  SACCO = 'SACCO',
-  MFI = 'MFI',
-  NGO = 'NGO',
+  MICROFINANCE = 'MICROFINANCE',
   UTILITY = 'UTILITY',
+  HEALTHCARE = 'HEALTHCARE',
   GOVERNMENT = 'GOVERNMENT',
   OTHER = 'OTHER',
 }
@@ -53,10 +50,15 @@ export class ServiceProvider {
   })
   businessType: ServiceProviderType;
 
-  @Column({ length: 100, nullable: true })
+  @Column({ length: 200, nullable: true })
+  otherBusinessType: string; // Specified when businessType is OTHER
+
+  @Column({ length: 100, unique: true })
+  @Index()
   registrationNumber: string; // BRELA registration number
 
-  @Column({ length: 100, nullable: true })
+  @Column({ length: 100, unique: true })
+  @Index()
   tinNumber: string; // TRA TIN number
 
   // Contact Information

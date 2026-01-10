@@ -15,6 +15,10 @@ export class UpdateServiceProviderDto {
   @IsOptional()
   businessType?: string;
 
+  @ApiPropertyOptional({ description: 'Other business type (if businessType is OTHER)' })
+  @IsOptional()
+  otherBusinessType?: string;
+
   @ApiPropertyOptional({ description: 'Registration number' })
   @IsOptional()
   registrationNumber?: string;

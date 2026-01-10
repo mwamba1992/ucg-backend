@@ -36,7 +36,7 @@ All core M-Pesa C2B payment integration components have been successfully implem
 
 ### 6. **API Endpoints**
 - `src/modules/mpesa/mpesa.controller.ts` - HTTP controller with:
-  - **PUBLIC:** `POST /api/v1/mpesa/c2b/payment` - M-Pesa webhook (no auth)
+  - **PUBLIC:** `POST /api/v1/vodacom/transaction` - M-Pesa webhook (no auth)
   - **PROTECTED:** `GET /api/v1/mpesa/transactions` - List transactions
   - **PROTECTED:** `GET /api/v1/mpesa/transactions/:mpesaReceipt` - Get transaction
   - **PROTECTED:** `POST /api/v1/mpesa/transactions/:mpesaReceipt/retry` - Retry failed
@@ -64,7 +64,7 @@ All core M-Pesa C2B payment integration components have been successfully implem
 1. M-Pesa Notification (XML)
    │
    ↓
-2. Webhook Endpoint (POST /api/v1/mpesa/c2b/payment)
+2. Webhook Endpoint (POST /api/v1/vodacom/transaction)
    ├─ Parse XML notification
    ├─ Verify password (SHA-256 + Base64)
    ├─ Check for duplicates
@@ -245,7 +245,7 @@ ucg.mpesa.validation
 ### 1. Test Webhook (Simulate M-Pesa Notification)
 
 ```bash
-curl -X POST http://localhost:3000/api/v1/mpesa/c2b/payment \
+curl -X POST http://localhost:3000/api/v1/vodacom/transaction \
   -H "Content-Type: application/xml" \
   -d '<?xml version="1.0"?>
 <request>

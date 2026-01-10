@@ -180,14 +180,14 @@ After fixing and restarting:
 
 3. **Test M-Pesa Payment**
    ```bash
-   curl -X POST http://YOUR_SERVER:8000/api/v1/mpesa/c2b/payment \
+   curl -X POST http://YOUR_SERVER:8000/api/v1/vodacom/transaction \
      -H "Content-Type: application/xml" \
      -d '<request>...</request>'
    ```
 
 4. **Test TigoPesa Payment**
    ```bash
-   curl -X POST http://YOUR_SERVER:8000/api/v1/tigopesa/billpay \
+   curl -X POST http://YOUR_SERVER:8000/api/v1/mixx/transaction \
      -H "Content-Type: application/xml" \
      -d '<COMMAND>...</COMMAND>'
    ```
