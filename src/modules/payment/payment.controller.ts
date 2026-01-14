@@ -9,6 +9,7 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
+  Logger,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -24,6 +25,8 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('payments')
 export class PaymentController {
+  private readonly logger = new Logger(PaymentController.name);
+
   constructor(
     private readonly paymentService: PaymentService,
     @InjectRepository(Payment)
@@ -169,7 +172,34 @@ export class PaymentController {
   @ApiResponse({ status: 400, description: 'Invalid payment data or amount' })
   @ApiResponse({ status: 404, description: 'Reference not found' })
   async createPayment(@Body() dto: CreatePaymentDto) {
-    return await this.paymentService.createPayment(dto);
+    const startTime = Date.now();
+
+    try {
+      this.logger.log('📥 ========== PAYMENT REQUEST ==========');
+      this.logger.log(`📥 Request Data: ${JSON.stringify(dto, null, 2)}`);
+      this.logger.log(`📥 Reference: ${dto.referenceNumber} | Amount: ${dto.amountPaid} | Channel: ${dto.paymentChannel}`);
+
+      const payment = await this.paymentService.createPayment(dto);
+
+      const responseTime = Date.now() - startTime;
+
+      this.logger.log('📤 ========== PAYMENT RESPONSE (SUCCESS) ==========');
+      this.logger.log(`📤 Payment ID: ${payment.id}`);
+      this.logger.log(`📤 Status: ${payment.status}`);
+      this.logger.log(`📤 Response Time: ${responseTime}ms`);
+      this.logger.log(`📤 Response Data: ${JSON.stringify(payment, null, 2)}`);
+
+      return payment;
+    } catch (error) {
+      const responseTime = Date.now() - startTime;
+
+      this.logger.error('📤 ========== PAYMENT RESPONSE (ERROR) ==========');
+      this.logger.error(`📤 Error: ${error.message}`);
+      this.logger.error(`📤 Response Time: ${responseTime}ms`);
+      this.logger.error(`📤 Stack: ${error.stack}`);
+
+      throw error;
+    }
   }
 
   @Get(':referenceNumber')

@@ -73,7 +73,8 @@ export class MpesaController {
     let notification: any = null;
 
     try {
-      this.logger.log('M-Pesa C2B payment notification received');
+      this.logger.log('📥 ========== M-PESA INCOMING REQUEST ==========');
+      this.logger.log(`📥 Raw XML Request:\n${xmlBody}`);
 
       // Parse XML notification
       notification = await this.mpesaService.parseXmlNotification(xmlBody);
@@ -148,6 +149,11 @@ export class MpesaController {
       const responseTime = Date.now() - startTime;
       this.logger.log(`M-Pesa webhook response time: ${responseTime}ms`);
 
+      this.logger.log('📤 ========== M-PESA OUTGOING RESPONSE (SUCCESS) ==========');
+      this.logger.log(`📤 XML Response:\n${syncResponse}`);
+      this.logger.log(`📤 Response Time: ${responseTime}ms`);
+      this.logger.log(`📤 Status: Success | Receipt: ${notification.mpesaReceipt}`);
+
       return syncResponse;
     } catch (error) {
       const responseTime = Date.now() - startTime;
@@ -157,7 +163,7 @@ export class MpesaController {
       );
 
       // Return XML error response instead of throwing JSON error
-      return this.mpesaService.buildErrorResponse(
+      const errorResponse = this.mpesaService.buildErrorResponse(
         notification?.conversationID || 'UNKNOWN',
         notification?.originatorConversationID || 'UNKNOWN',
         notification?.transactionID || 'UNKNOWN',
@@ -165,6 +171,13 @@ export class MpesaController {
         error.message || 'Invalid request',
         'Failed',
       );
+
+      this.logger.error('📤 ========== M-PESA OUTGOING RESPONSE (ERROR) ==========');
+      this.logger.error(`📤 XML Response:\n${errorResponse}`);
+      this.logger.error(`📤 Response Time: ${responseTime}ms`);
+      this.logger.error(`📤 Error: ${error.message}`);
+
+      return errorResponse;
     }
   }
 
