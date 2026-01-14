@@ -27,7 +27,6 @@ import { PaymentService } from '../payment/payment.service';
 import { CBSService } from '../cbs/cbs.service';
 import { TransferType } from '../cbs/entities/cbs-transfer.entity';
 import { PaymentStatus } from '../payment/entities/payment.entity';
-import { FinancialServiceProvider } from '../financial-service-provider/entities/financial-service-provider.entity';
 
 @Injectable()
 export class MpesaService {
@@ -39,8 +38,6 @@ export class MpesaService {
     private readonly mpesaTransactionRepo: Repository<MpesaTransaction>,
     @InjectRepository(MpesaConfig)
     private readonly mpesaConfigRepo: Repository<MpesaConfig>,
-    @InjectRepository(FinancialServiceProvider)
-    private readonly fspRepo: Repository<FinancialServiceProvider>,
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
     private readonly mpesaProducer: MpesaProducer,
@@ -403,7 +400,7 @@ export class MpesaService {
 
       const reference = validation.reference;
 
-      // 2. Create payment record
+      // 2. Create payment record (PaymentService handles CBS transfer internally)
       this.logger.log(
         `Creating payment record for ${message.referenceNumber}: ${message.amount}`,
       );
@@ -420,104 +417,14 @@ export class MpesaService {
         description: `M-Pesa payment: ${message.mpesaReceipt}`,
       });
 
-      this.logger.log(`Payment created: ${payment.id}`);
+      this.logger.log(`Payment created: ${payment.id} - CBS transfer handled by PaymentService`);
 
-      // 3. Execute CBS transfer (GL → Deposit)
-      let cbsTransferId: string = null;
-
-      try {
-        // Check if CBS transfer is enabled
-        const cbsTransferEnabled = process.env.CBS_TRANSFER_ENABLED === 'true';
-
-        if (!cbsTransferEnabled) {
-          this.logger.log('CBS transfer is disabled - skipping');
-        } else {
-          const serviceProvider = reference.serviceProvider;
-          const primaryBankAccount = serviceProvider.bankAccounts?.find(
-            (account) => account.isPrimary && account.isActive,
-          );
-
-          if (!primaryBankAccount) {
-            this.logger.warn(
-              `No primary bank account for SP ${serviceProvider.businessName} - skipping CBS transfer`,
-            );
-          } else {
-            // Get FSP GL account from database based on fspCode
-            const fspCode = 'VODACOM'; // M-Pesa uses VODACOM
-            const fsp = await this.fspRepo.findOne({
-              where: { fspCode },
-            });
-
-            if (!fsp) {
-              this.logger.error(
-                `FSP not found for code: ${fspCode} - cannot execute CBS transfer`,
-              );
-            } else if (!fsp.glAccountNumber) {
-              this.logger.error(
-                `FSP ${fsp.name} (${fsp.fspCode}) has no GL account configured - cannot execute CBS transfer`,
-              );
-            } else {
-              // Calculate commission and net amount
-              const grossAmount = Number(message.amount);
-              const commissionRate = 0; // TODO: Make configurable
-              const commission = this.cbsService.calculateCommission(
-                grossAmount,
-                commissionRate,
-              );
-              const netAmount = grossAmount - commission;
-
-              const fspGLAccount = fsp.glAccountNumber;
-              const spDepositAccount = primaryBankAccount.accountNumber;
-
-              this.logger.log(
-                `Initiating CBS transfer: ` +
-                `FSP: ${fsp.name} (${fsp.fspCode}) | ` +
-                `Amount: ${netAmount} (Gross: ${grossAmount}, Commission: ${commission}, Rate: ${commissionRate}%) | ` +
-                `From: ${fspGLAccount} (${fsp.glAccountName || 'FSP GL Account'}) | ` +
-                `To: ${spDepositAccount} (${serviceProvider.businessName})`,
-              );
-
-              const transferResult = await this.cbsService.executeTransfer(
-                {
-                  reference: message.referenceNumber,
-                  creditAccount: spDepositAccount,
-                  debitAccount: fspGLAccount,
-                  currency: reference.currency || 'TZS',
-                  amount: netAmount,
-                  description: `M-Pesa settlement for ${message.referenceNumber} via ${fsp.name} - ${serviceProvider.businessName}`,
-                  type: TransferType.GL_TO_DEPOSIT,
-                },
-                payment.id,
-              );
-
-              if (transferResult.success) {
-                cbsTransferId = transferResult.transferId;
-                this.logger.log(
-                  `CBS transfer successful: ${transferResult.cbsReference}`,
-                );
-              } else {
-                this.logger.error(
-                  `CBS transfer failed: ${transferResult.error}`,
-                );
-                // Don't fail the payment, just log the error
-              }
-            }
-          }
-        }
-      } catch (cbsError) {
-        this.logger.error(
-          `CBS transfer error: ${cbsError.message}`,
-          cbsError.stack,
-        );
-        // Don't fail the payment
-      }
-
-      // 4. Update M-Pesa transaction status
+      // 3. Update M-Pesa transaction status
       await this.updateTransactionStatus(
         message.mpesaReceipt,
         MpesaTransactionStatus.COMPLETED,
         payment.id,
-        cbsTransferId,
+        null, // cbsTransferId managed by PaymentService
       );
 
       this.logger.log(
@@ -528,7 +435,7 @@ export class MpesaService {
         success: true,
         mpesaReceipt: message.mpesaReceipt,
         paymentId: payment.id,
-        cbsTransferId,
+        cbsTransferId: undefined, // CBS transfer managed by PaymentService
       };
     } catch (error) {
       this.logger.error(

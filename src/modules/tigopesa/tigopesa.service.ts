@@ -23,7 +23,6 @@ import { ReferenceService } from '../reference/reference.service';
 import { PaymentService } from '../payment/payment.service';
 import { CBSService } from '../cbs/cbs.service';
 import { TransferType } from '../cbs/entities/cbs-transfer.entity';
-import { FinancialServiceProvider } from '../financial-service-provider/entities/financial-service-provider.entity';
 
 @Injectable()
 export class TigoPesaService {
@@ -34,8 +33,6 @@ export class TigoPesaService {
     private readonly tigopesaTransactionRepo: Repository<TigoPesaTransaction>,
     @InjectRepository(TigoPesaConfig)
     private readonly tigopesaConfigRepo: Repository<TigoPesaConfig>,
-    @InjectRepository(FinancialServiceProvider)
-    private readonly fspRepo: Repository<FinancialServiceProvider>,
     private readonly configService: ConfigService,
     private readonly referenceService: ReferenceService,
     private readonly paymentService: PaymentService,
@@ -282,7 +279,7 @@ export class TigoPesaService {
       // 2. Generate partner reference ID
       const refId = this.generateRefId();
 
-      // 3. Create payment record
+      // 3. Create payment record (PaymentService handles CBS transfer internally)
       this.logger.log(
         `Creating payment record for ${message.customerReferenceId}: ${message.amount}`,
       );
@@ -290,8 +287,8 @@ export class TigoPesaService {
       const payment = await this.paymentService.createPayment({
         referenceNumber: message.customerReferenceId,
         amountPaid: message.amount,
-        paymentChannel: 'TigoPesa',
-        fspCode: 'TIGO',
+        paymentChannel: 'Mixx By Yas',
+        fspCode: 'MIXX',
         payerName: message.senderName || message.msisdn,
         payerPhone: message.msisdn,
         transactionId: message.txnId,
@@ -299,105 +296,15 @@ export class TigoPesaService {
         description: `TigoPesa payment: ${message.txnId}`,
       });
 
-      this.logger.log(`Payment created: ${payment.id}`);
+      this.logger.log(`Payment created: ${payment.id} - CBS transfer handled by PaymentService`);
 
-      // 4. Execute CBS transfer (GL → Deposit)
-      let cbsTransferId: string = null;
-
-      try {
-        // Check if CBS transfer is enabled
-        const cbsTransferEnabled = process.env.CBS_TRANSFER_ENABLED === 'true';
-
-        if (!cbsTransferEnabled) {
-          this.logger.log('CBS transfer is disabled - skipping');
-        } else {
-          const serviceProvider = reference.serviceProvider;
-          const primaryBankAccount = serviceProvider.bankAccounts?.find(
-            (account) => account.isPrimary && account.isActive,
-          );
-
-          if (!primaryBankAccount) {
-            this.logger.warn(
-              `No primary bank account for SP ${serviceProvider.businessName} - skipping CBS transfer`,
-            );
-          } else {
-            // Get FSP GL account from database based on fspCode
-            const fspCode = 'TIGO'; // TigoPesa uses TIGO
-            const fsp = await this.fspRepo.findOne({
-              where: { fspCode },
-            });
-
-            if (!fsp) {
-              this.logger.error(
-                `FSP not found for code: ${fspCode} - cannot execute CBS transfer`,
-              );
-            } else if (!fsp.glAccountNumber) {
-              this.logger.error(
-                `FSP ${fsp.name} (${fsp.fspCode}) has no GL account configured - cannot execute CBS transfer`,
-              );
-            } else {
-              // Calculate commission and net amount
-              const grossAmount = Number(message.amount);
-              const commissionRate = 0; // TODO: Make configurable
-              const commission = this.cbsService.calculateCommission(
-                grossAmount,
-                commissionRate,
-              );
-              const netAmount = grossAmount - commission;
-
-              const fspGLAccount = fsp.glAccountNumber;
-              const spDepositAccount = primaryBankAccount.accountNumber;
-
-              this.logger.log(
-                `Initiating CBS transfer: ` +
-                `FSP: ${fsp.name} (${fsp.fspCode}) | ` +
-                `Amount: ${netAmount} (Gross: ${grossAmount}, Commission: ${commission}, Rate: ${commissionRate}%) | ` +
-                `From: ${fspGLAccount} (${fsp.glAccountName || 'FSP GL Account'}) | ` +
-                `To: ${spDepositAccount} (${serviceProvider.businessName})`,
-              );
-
-              const transferResult = await this.cbsService.executeTransfer(
-                {
-                  reference: message.customerReferenceId,
-                  creditAccount: spDepositAccount,
-                  debitAccount: fspGLAccount,
-                  currency: reference.currency || 'TZS',
-                  amount: netAmount,
-                  description: `TigoPesa settlement for ${message.customerReferenceId} via ${fsp.name} - ${serviceProvider.businessName}`,
-                  type: TransferType.GL_TO_DEPOSIT,
-                },
-                payment.id,
-              );
-
-              if (transferResult.success) {
-                cbsTransferId = transferResult.transferId;
-                this.logger.log(
-                  `CBS transfer successful: ${transferResult.cbsReference}`,
-                );
-              } else {
-                this.logger.error(
-                  `CBS transfer failed: ${transferResult.error}`,
-                );
-                // Don't fail the payment, just log the error
-              }
-            }
-          }
-        }
-      } catch (cbsError) {
-        this.logger.error(
-          `CBS transfer error: ${cbsError.message}`,
-          cbsError.stack,
-        );
-        // Don't fail the payment
-      }
-
-      // 5. Update TigoPesa transaction status
+      // 4. Update TigoPesa transaction status
       await this.updateTransactionStatus(
         message.txnId,
         TigoPesaTransactionStatus.COMPLETED,
         refId,
         payment.id,
-        cbsTransferId,
+        null, // cbsTransferId managed by PaymentService
         TigoPesaErrorCode.SUCCESS,
       );
 
@@ -410,7 +317,7 @@ export class TigoPesaService {
         txnId: message.txnId,
         refId,
         paymentId: payment.id,
-        cbsTransferId,
+        cbsTransferId: undefined, // CBS transfer managed by PaymentService
         errorCode: TigoPesaErrorCode.SUCCESS,
       };
     } catch (error) {

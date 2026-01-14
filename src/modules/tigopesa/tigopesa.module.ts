@@ -12,12 +12,11 @@ import { RABBITMQ_QUEUES } from '../../config/rabbitmq.config';
 import { PaymentModule } from '../payment/payment.module';
 import { ReferenceModule } from '../reference/reference.module';
 import { CBSModule } from '../cbs/cbs.module';
-import { FinancialServiceProvider } from '../financial-service-provider/entities/financial-service-provider.entity';
 
 @Module({
   imports: [
     // TypeORM for TigoPesa entities
-    TypeOrmModule.forFeature([TigoPesaTransaction, TigoPesaConfig, FinancialServiceProvider]),
+    TypeOrmModule.forFeature([TigoPesaTransaction, TigoPesaConfig]),
 
     // RabbitMQ Client for TigoPesa queues
     ClientsModule.registerAsync([
