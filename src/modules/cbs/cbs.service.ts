@@ -110,14 +110,17 @@ export class CBSService {
       );
 
       // Log response details
+      const isSuccess = response.data.statusCode === '6200';
       this.logger.log(
         `📥 CBS Transfer Response:\n` +
-        `   Status Code: ${response.data.statusCode}\n` +
+        `   Status Code: ${response.data.statusCode} ${isSuccess ? '✅ (SUCCESS)' : '❌ (FAILURE)'}\n` +
         `   Status Description: ${response.data.statusDescription}\n` +
         `   Full Response: ${JSON.stringify(response.data, null, 2)}`,
       );
 
-      // Process CBS response
+      // Process CBS response - ONLY 6200 is success, all others are failure
+      // IMPORTANT: CBS API returns statusCode "6200" for successful transfers
+      // Any other status code (e.g., 6201, 6500, etc.) indicates FAILURE
       if (response.data.statusCode === '6200') {
         savedTransfer.status = TransferStatus.SUCCESS;
         savedTransfer.cbsResponseCode = response.data.statusCode;
@@ -128,7 +131,7 @@ export class CBSService {
         await this.transferRepo.save(savedTransfer);
 
         this.logger.log(
-          `CBS transfer successful: ${response.data.response.reference} - ${response.data.statusDescription}`,
+          `✅ CBS transfer SUCCESS: Status code 6200 - ${response.data.response.reference} - ${response.data.statusDescription}`,
         );
 
         return {
@@ -139,15 +142,16 @@ export class CBSService {
           statusDescription: response.data.statusDescription,
         };
       } else {
+        // Any status code other than 6200 is a failure
         savedTransfer.status = TransferStatus.FAILED;
         savedTransfer.cbsResponseCode = response.data.statusCode;
         savedTransfer.cbsResponseMessage = response.data.statusDescription;
-        savedTransfer.errorMessage = `CBS returned non-success code: ${response.data.statusCode}`;
+        savedTransfer.errorMessage = `CBS transfer failed: Status code ${response.data.statusCode} (Only 6200 is success) - ${response.data.statusDescription}`;
 
         await this.transferRepo.save(savedTransfer);
 
         this.logger.warn(
-          `CBS transfer failed: ${response.data.statusCode} - ${response.data.statusDescription}`,
+          `❌ CBS transfer FAILED: Status code ${response.data.statusCode} (Only 6200 is success) - ${response.data.statusDescription}`,
         );
 
         return {
