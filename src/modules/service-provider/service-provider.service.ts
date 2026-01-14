@@ -18,11 +18,14 @@ import { CreateBankAccountDto } from './dto/bank-account.dto';
 import { UpdateBankAccountDto } from './dto/update-bank-account.dto';
 import { WorkflowService } from '../workflow/workflow.service';
 import { NotificationService } from '../notification/notification.service';
+import { UserService } from '../user/user.service';
+import { UserType, UserRole } from '../user/entities/user.entity';
 import * as crypto from 'crypto';
 
 @Injectable()
 export class ServiceProviderService {
   private readonly logger = new Logger(ServiceProviderService.name);
+  private readonly DEFAULT_PASSWORD = 'Password@123';
 
   constructor(
     @InjectRepository(ServiceProvider)
@@ -35,6 +38,7 @@ export class ServiceProviderService {
     private readonly settingsRepository: Repository<ServiceProviderSettings>,
     private readonly workflowService: WorkflowService,
     private readonly notificationService: NotificationService,
+    private readonly userService: UserService,
   ) {}
 
   /**
@@ -452,6 +456,56 @@ export class ServiceProviderService {
     serviceProvider.isActive = true;
 
     await this.serviceProviderRepository.save(serviceProvider);
+
+    // Create user account for the service provider with default password
+    try {
+      // Check if user already exists
+      const existingUser = await this.userService.findByEmail(serviceProvider.email);
+
+      if (!existingUser) {
+        this.logger.log(`Creating user account for SP: ${serviceProvider.email}`);
+
+        // Get contact person name from contact
+        const contact = serviceProvider.contact;
+        const firstName = contact?.fullName?.split(' ')[0] || 'Service';
+        const lastName = contact?.fullName?.split(' ').slice(1).join(' ') || 'Provider';
+
+        // Create user with default password
+        await this.userService.create({
+          firstName,
+          lastName,
+          email: serviceProvider.email,
+          phoneNumber: serviceProvider.phoneNumber,
+          password: this.DEFAULT_PASSWORD,
+          userType: UserType.SERVICE_PROVIDER,
+          role: UserRole.SP_ADMIN,
+          status: 'ACTIVE' as any,
+        });
+
+        // Mark user as must change password
+        const newUser = await this.userService.findByEmail(serviceProvider.email);
+        if (newUser) {
+          await this.userService.update(newUser.id, {
+            mustChangePassword: true,
+          } as any);
+        }
+
+        this.logger.log(`User account created successfully for SP: ${serviceProvider.email}`);
+
+        // Send default password via SMS
+        await this.notificationService.sendSMS(
+          serviceProvider.phoneNumber,
+          `Welcome to UCG! Your account has been created.\n\nEmail: ${serviceProvider.email}\nDefault Password: ${this.DEFAULT_PASSWORD}\n\nIMPORTANT: You must change this password on first login.\n\nLogin at: https://sp.ucg.co.tz`,
+          'UCG - Account Created',
+        );
+        this.logger.log(`Default password sent via SMS to: ${serviceProvider.phoneNumber}`);
+      } else {
+        this.logger.warn(`User already exists for SP: ${serviceProvider.email}`);
+      }
+    } catch (error) {
+      this.logger.error(`Failed to create user account for SP: ${error.message}`);
+      // Continue with approval even if user creation fails
+    }
 
     // Send approval notification
     try {

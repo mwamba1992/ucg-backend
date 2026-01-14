@@ -1,4 +1,4 @@
-import { IsEmail, IsString, IsEnum, IsOptional, MinLength } from 'class-validator';
+import { IsEmail, IsString, IsEnum, IsOptional, MinLength, IsBoolean } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { UserRole, UserStatus, UserType } from '../entities/user.entity';
 
@@ -43,4 +43,9 @@ export class UpdateUserDto {
   @IsEnum(UserStatus)
   @IsOptional()
   status?: UserStatus;
+
+  @ApiProperty({ example: false, required: false, description: 'Whether user must change password on next login' })
+  @IsBoolean()
+  @IsOptional()
+  mustChangePassword?: boolean;
 }

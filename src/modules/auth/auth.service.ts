@@ -87,6 +87,9 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
+    // Get full user details including mustChangePassword flag
+    const fullUser = await this.userService.findOne(user.id);
+
     // Update last login time
     await this.userService.updateLastLogin(user.id);
 
@@ -106,7 +109,8 @@ export class AuthService {
         userType: user.userType,
         role: user.role,
         status: user.status,
-      },
+        mustChangePassword: fullUser.mustChangePassword,
+      } as any,
     };
   }
 
@@ -248,6 +252,11 @@ export class AuthService {
     newPassword: string,
   ): Promise<void> {
     await this.userService.changePassword(userId, currentPassword, newPassword);
+
+    // Reset mustChangePassword flag after successful password change
+    await this.userService.update(userId, {
+      mustChangePassword: false,
+    } as any);
   }
 
   /**
@@ -323,6 +332,15 @@ export class AuthService {
     try {
       const userRecord = await this.userService.findByEmail(loginDto.email);
       if (userRecord && userRecord.userType === UserType.SERVICE_PROVIDER) {
+        // Validate password if user account exists
+        const isPasswordValid = await userRecord.validatePassword(loginDto.password);
+        if (!isPasswordValid) {
+          throw new UnauthorizedException('Invalid credentials');
+        }
+
+        // Get full user details including mustChangePassword flag
+        const fullUser = await this.userService.findOne(userRecord.id);
+
         user = {
           id: userRecord.id,
           firstName: userRecord.firstName,
@@ -332,9 +350,14 @@ export class AuthService {
           role: userRecord.role,
           userType: userRecord.userType,
           status: userRecord.status,
+          mustChangePassword: fullUser.mustChangePassword,
         };
       }
     } catch (error) {
+      // If error is UnauthorizedException, rethrow it
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
       // User doesn't exist - that's ok, continue without user object
       this.logger.warn(`No user found for SP email: ${loginDto.email}`);
     }
