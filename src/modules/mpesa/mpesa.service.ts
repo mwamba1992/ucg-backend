@@ -27,11 +27,11 @@ import { PaymentService } from '../payment/payment.service';
 import { CBSService } from '../cbs/cbs.service';
 import { TransferType } from '../cbs/entities/cbs-transfer.entity';
 import { PaymentStatus } from '../payment/entities/payment.entity';
+import { FinancialServiceProvider } from '../financial-service-provider/entities/financial-service-provider.entity';
 
 @Injectable()
 export class MpesaService {
   private readonly logger = new Logger(MpesaService.name);
-  private readonly ucgGLAccount: string;
   private readonly mpesaCallbackUrl: string;
 
   constructor(
@@ -39,6 +39,8 @@ export class MpesaService {
     private readonly mpesaTransactionRepo: Repository<MpesaTransaction>,
     @InjectRepository(MpesaConfig)
     private readonly mpesaConfigRepo: Repository<MpesaConfig>,
+    @InjectRepository(FinancialServiceProvider)
+    private readonly fspRepo: Repository<FinancialServiceProvider>,
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
     private readonly mpesaProducer: MpesaProducer,
@@ -46,7 +48,6 @@ export class MpesaService {
     private readonly paymentService: PaymentService,
     private readonly cbsService: CBSService,
   ) {
-    this.ucgGLAccount = this.configService.get<string>('UCG_GL_ACCOUNT') || '1000000001';
     this.mpesaCallbackUrl = this.configService.get<string>('MPESA_CALLBACK_URL');
   }
 
@@ -425,43 +426,82 @@ export class MpesaService {
       let cbsTransferId: string = null;
 
       try {
-        const serviceProvider = reference.serviceProvider;
-        const primaryBankAccount = serviceProvider.bankAccounts?.find(
-          (account) => account.isPrimary && account.isActive,
-        );
+        // Check if CBS transfer is enabled
+        const cbsTransferEnabled = process.env.CBS_TRANSFER_ENABLED === 'true';
 
-        if (!primaryBankAccount) {
-          this.logger.warn(
-            `No primary bank account for SP ${serviceProvider.businessName} - skipping CBS transfer`,
-          );
+        if (!cbsTransferEnabled) {
+          this.logger.log('CBS transfer is disabled - skipping');
         } else {
-          this.logger.log(
-            `Executing CBS transfer: ${message.amount} from ${this.ucgGLAccount} to ${primaryBankAccount.accountNumber}`,
+          const serviceProvider = reference.serviceProvider;
+          const primaryBankAccount = serviceProvider.bankAccounts?.find(
+            (account) => account.isPrimary && account.isActive,
           );
 
-          const transferResult = await this.cbsService.executeTransfer(
-            {
-              reference: message.referenceNumber,
-              creditAccount: primaryBankAccount.accountNumber,
-              debitAccount: this.ucgGLAccount,
-              currency: reference.currency || 'TZS',
-              amount: message.amount,
-              description: `M-Pesa settlement: ${message.mpesaReceipt}`,
-              type: TransferType.GL_TO_DEPOSIT,
-            },
-            payment.id,
-          );
-
-          if (transferResult.success) {
-            cbsTransferId = transferResult.transferId;
-            this.logger.log(
-              `CBS transfer successful: ${transferResult.cbsReference}`,
+          if (!primaryBankAccount) {
+            this.logger.warn(
+              `No primary bank account for SP ${serviceProvider.businessName} - skipping CBS transfer`,
             );
           } else {
-            this.logger.error(
-              `CBS transfer failed: ${transferResult.error}`,
-            );
-            // Don't fail the payment, just log the error
+            // Get FSP GL account from database based on fspCode
+            const fspCode = 'VODACOM'; // M-Pesa uses VODACOM
+            const fsp = await this.fspRepo.findOne({
+              where: { fspCode },
+            });
+
+            if (!fsp) {
+              this.logger.error(
+                `FSP not found for code: ${fspCode} - cannot execute CBS transfer`,
+              );
+            } else if (!fsp.glAccountNumber) {
+              this.logger.error(
+                `FSP ${fsp.name} (${fsp.fspCode}) has no GL account configured - cannot execute CBS transfer`,
+              );
+            } else {
+              // Calculate commission and net amount
+              const grossAmount = Number(message.amount);
+              const commissionRate = 0; // TODO: Make configurable
+              const commission = this.cbsService.calculateCommission(
+                grossAmount,
+                commissionRate,
+              );
+              const netAmount = grossAmount - commission;
+
+              const fspGLAccount = fsp.glAccountNumber;
+              const spDepositAccount = primaryBankAccount.accountNumber;
+
+              this.logger.log(
+                `Initiating CBS transfer: ` +
+                `FSP: ${fsp.name} (${fsp.fspCode}) | ` +
+                `Amount: ${netAmount} (Gross: ${grossAmount}, Commission: ${commission}, Rate: ${commissionRate}%) | ` +
+                `From: ${fspGLAccount} (${fsp.glAccountName || 'FSP GL Account'}) | ` +
+                `To: ${spDepositAccount} (${serviceProvider.businessName})`,
+              );
+
+              const transferResult = await this.cbsService.executeTransfer(
+                {
+                  reference: message.referenceNumber,
+                  creditAccount: spDepositAccount,
+                  debitAccount: fspGLAccount,
+                  currency: reference.currency || 'TZS',
+                  amount: netAmount,
+                  description: `M-Pesa settlement for ${message.referenceNumber} via ${fsp.name} - ${serviceProvider.businessName}`,
+                  type: TransferType.GL_TO_DEPOSIT,
+                },
+                payment.id,
+              );
+
+              if (transferResult.success) {
+                cbsTransferId = transferResult.transferId;
+                this.logger.log(
+                  `CBS transfer successful: ${transferResult.cbsReference}`,
+                );
+              } else {
+                this.logger.error(
+                  `CBS transfer failed: ${transferResult.error}`,
+                );
+                // Don't fail the payment, just log the error
+              }
+            }
           }
         }
       } catch (cbsError) {

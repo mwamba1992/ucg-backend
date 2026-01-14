@@ -13,11 +13,12 @@ import { RABBITMQ_QUEUES } from '../../config/rabbitmq.config';
 import { PaymentModule } from '../payment/payment.module';
 import { ReferenceModule } from '../reference/reference.module';
 import { CBSModule } from '../cbs/cbs.module';
+import { FinancialServiceProvider } from '../financial-service-provider/entities/financial-service-provider.entity';
 
 @Module({
   imports: [
     // TypeORM for M-Pesa entities
-    TypeOrmModule.forFeature([MpesaTransaction, MpesaConfig]),
+    TypeOrmModule.forFeature([MpesaTransaction, MpesaConfig, FinancialServiceProvider]),
 
     // RabbitMQ Client for M-Pesa queues
     ClientsModule.registerAsync([

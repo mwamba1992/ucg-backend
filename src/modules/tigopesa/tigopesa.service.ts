@@ -23,24 +23,24 @@ import { ReferenceService } from '../reference/reference.service';
 import { PaymentService } from '../payment/payment.service';
 import { CBSService } from '../cbs/cbs.service';
 import { TransferType } from '../cbs/entities/cbs-transfer.entity';
+import { FinancialServiceProvider } from '../financial-service-provider/entities/financial-service-provider.entity';
 
 @Injectable()
 export class TigoPesaService {
   private readonly logger = new Logger(TigoPesaService.name);
-  private readonly ucgGLAccount: string;
 
   constructor(
     @InjectRepository(TigoPesaTransaction)
     private readonly tigopesaTransactionRepo: Repository<TigoPesaTransaction>,
     @InjectRepository(TigoPesaConfig)
     private readonly tigopesaConfigRepo: Repository<TigoPesaConfig>,
+    @InjectRepository(FinancialServiceProvider)
+    private readonly fspRepo: Repository<FinancialServiceProvider>,
     private readonly configService: ConfigService,
     private readonly referenceService: ReferenceService,
     private readonly paymentService: PaymentService,
     private readonly cbsService: CBSService,
-  ) {
-    this.ucgGLAccount = this.configService.get<string>('UCG_GL_ACCOUNT') || '1000000001';
-  }
+  ) {}
 
   /**
    * Parse TigoPesa XML notification to DTO
@@ -305,43 +305,82 @@ export class TigoPesaService {
       let cbsTransferId: string = null;
 
       try {
-        const serviceProvider = reference.serviceProvider;
-        const primaryBankAccount = serviceProvider.bankAccounts?.find(
-          (account) => account.isPrimary && account.isActive,
-        );
+        // Check if CBS transfer is enabled
+        const cbsTransferEnabled = process.env.CBS_TRANSFER_ENABLED === 'true';
 
-        if (!primaryBankAccount) {
-          this.logger.warn(
-            `No primary bank account for SP ${serviceProvider.businessName} - skipping CBS transfer`,
-          );
+        if (!cbsTransferEnabled) {
+          this.logger.log('CBS transfer is disabled - skipping');
         } else {
-          this.logger.log(
-            `Executing CBS transfer: ${message.amount} from ${this.ucgGLAccount} to ${primaryBankAccount.accountNumber}`,
+          const serviceProvider = reference.serviceProvider;
+          const primaryBankAccount = serviceProvider.bankAccounts?.find(
+            (account) => account.isPrimary && account.isActive,
           );
 
-          const transferResult = await this.cbsService.executeTransfer(
-            {
-              reference: message.customerReferenceId,
-              creditAccount: primaryBankAccount.accountNumber,
-              debitAccount: this.ucgGLAccount,
-              currency: reference.currency || 'TZS',
-              amount: message.amount,
-              description: `TigoPesa settlement: ${message.txnId}`,
-              type: TransferType.GL_TO_DEPOSIT,
-            },
-            payment.id,
-          );
-
-          if (transferResult.success) {
-            cbsTransferId = transferResult.transferId;
-            this.logger.log(
-              `CBS transfer successful: ${transferResult.cbsReference}`,
+          if (!primaryBankAccount) {
+            this.logger.warn(
+              `No primary bank account for SP ${serviceProvider.businessName} - skipping CBS transfer`,
             );
           } else {
-            this.logger.error(
-              `CBS transfer failed: ${transferResult.error}`,
-            );
-            // Don't fail the payment, just log the error
+            // Get FSP GL account from database based on fspCode
+            const fspCode = 'TIGO'; // TigoPesa uses TIGO
+            const fsp = await this.fspRepo.findOne({
+              where: { fspCode },
+            });
+
+            if (!fsp) {
+              this.logger.error(
+                `FSP not found for code: ${fspCode} - cannot execute CBS transfer`,
+              );
+            } else if (!fsp.glAccountNumber) {
+              this.logger.error(
+                `FSP ${fsp.name} (${fsp.fspCode}) has no GL account configured - cannot execute CBS transfer`,
+              );
+            } else {
+              // Calculate commission and net amount
+              const grossAmount = Number(message.amount);
+              const commissionRate = 0; // TODO: Make configurable
+              const commission = this.cbsService.calculateCommission(
+                grossAmount,
+                commissionRate,
+              );
+              const netAmount = grossAmount - commission;
+
+              const fspGLAccount = fsp.glAccountNumber;
+              const spDepositAccount = primaryBankAccount.accountNumber;
+
+              this.logger.log(
+                `Initiating CBS transfer: ` +
+                `FSP: ${fsp.name} (${fsp.fspCode}) | ` +
+                `Amount: ${netAmount} (Gross: ${grossAmount}, Commission: ${commission}, Rate: ${commissionRate}%) | ` +
+                `From: ${fspGLAccount} (${fsp.glAccountName || 'FSP GL Account'}) | ` +
+                `To: ${spDepositAccount} (${serviceProvider.businessName})`,
+              );
+
+              const transferResult = await this.cbsService.executeTransfer(
+                {
+                  reference: message.customerReferenceId,
+                  creditAccount: spDepositAccount,
+                  debitAccount: fspGLAccount,
+                  currency: reference.currency || 'TZS',
+                  amount: netAmount,
+                  description: `TigoPesa settlement for ${message.customerReferenceId} via ${fsp.name} - ${serviceProvider.businessName}`,
+                  type: TransferType.GL_TO_DEPOSIT,
+                },
+                payment.id,
+              );
+
+              if (transferResult.success) {
+                cbsTransferId = transferResult.transferId;
+                this.logger.log(
+                  `CBS transfer successful: ${transferResult.cbsReference}`,
+                );
+              } else {
+                this.logger.error(
+                  `CBS transfer failed: ${transferResult.error}`,
+                );
+                // Don't fail the payment, just log the error
+              }
+            }
           }
         }
       } catch (cbsError) {
