@@ -10,6 +10,7 @@ import { PaymentProducer } from './payment.producer';
 import { NotificationService } from '../notification/notification.service';
 import { CBSService } from '../cbs/cbs.service';
 import { TransferType } from '../cbs/entities/cbs-transfer.entity';
+import { FinancialServiceProvider } from '../financial-service-provider/entities/financial-service-provider.entity';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -21,6 +22,8 @@ export class PaymentService {
     private readonly paymentRepo: Repository<Payment>,
     @InjectRepository(PaymentReference)
     private readonly referenceRepo: Repository<PaymentReference>,
+    @InjectRepository(FinancialServiceProvider)
+    private readonly fspRepo: Repository<FinancialServiceProvider>,
     private readonly referenceService: ReferenceService,
     @Inject(forwardRef(() => PaymentProducer))
     private readonly paymentProducer: PaymentProducer,
@@ -149,6 +152,25 @@ export class PaymentService {
       return;
     }
 
+    // Get FSP GL account from database based on payment's fspCode
+    const fsp = await this.fspRepo.findOne({
+      where: { fspCode: payment.fspCode },
+    });
+
+    if (!fsp) {
+      this.logger.error(
+        `FSP not found for code: ${payment.fspCode} - cannot execute CBS transfer`,
+      );
+      return;
+    }
+
+    if (!fsp.glAccountNumber) {
+      this.logger.error(
+        `FSP ${fsp.name} (${fsp.fspCode}) has no GL account configured - cannot execute CBS transfer`,
+      );
+      return;
+    }
+
     // Calculate commission and net amount
     // NOTE: Commission rate is set to 0 for now (configurable in future)
     const grossAmount = Number(payment.amountPaid);
@@ -159,14 +181,16 @@ export class PaymentService {
     );
     const netAmount = grossAmount - commission;
 
-    // Get UCG GL account from environment or config
-    const ucgGLAccount = process.env.UCG_GL_ACCOUNT;
+    // Use FSP's GL account as the source (debit account)
+    const fspGLAccount = fsp.glAccountNumber;
     const spDepositAccount = primaryBankAccount.accountNumber;
 
     this.logger.log(
       `Initiating CBS transfer: ` +
-      `Amount: ${netAmount} (Gross: ${grossAmount}, Commission: ${commission}, Rate: ${commissionRate}%) ` +
-      `from ${ucgGLAccount} to ${spDepositAccount}`,
+      `FSP: ${fsp.name} (${fsp.fspCode}) | ` +
+      `Amount: ${netAmount} (Gross: ${grossAmount}, Commission: ${commission}, Rate: ${commissionRate}%) | ` +
+      `From: ${fspGLAccount} (${fsp.glAccountName || 'FSP GL Account'}) | ` +
+      `To: ${spDepositAccount} (${serviceProvider.businessName})`,
     );
 
     // Execute transfer
@@ -174,10 +198,10 @@ export class PaymentService {
       {
         reference: payment.referenceNumber,
         creditAccount: spDepositAccount,
-        debitAccount: ucgGLAccount,
+        debitAccount: fspGLAccount,
         currency: payment.currency || 'TZS',
         amount: netAmount,
-        description: `Payment settlement for ${reference.referenceNumber} - ${serviceProvider.businessName}`,
+        description: `Payment settlement for ${reference.referenceNumber} via ${fsp.name} - ${serviceProvider.businessName}`,
         type: TransferType.GL_TO_DEPOSIT,
       },
       payment.id,

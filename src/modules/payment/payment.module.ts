@@ -10,10 +10,11 @@ import { PaymentProducer } from './payment.producer';
 import { PaymentConsumer } from './payment.consumer';
 import { NotificationModule } from '../notification/notification.module';
 import { CBSModule } from '../cbs/cbs.module';
+import { FinancialServiceProvider } from '../financial-service-provider/entities/financial-service-provider.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Payment, PaymentReference]),
+    TypeOrmModule.forFeature([Payment, PaymentReference, FinancialServiceProvider]),
     ReferenceModule, // Make ReferenceService available here
     NotificationModule,
     CBSModule, // Import CBS module for fund transfers
