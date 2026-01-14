@@ -74,22 +74,32 @@ export class CBSService {
       );
 
       // Get access token
-      
+
       const token = await this.authService.loginClient();
+
+      // Prepare request payload
+      const requestPayload = {
+        reference: dto.reference,
+        creditAccount: dto.creditAccount,
+        debitAccount: dto.debitAccount,
+        currency: dto.currency,
+        amount: dto.amount,
+        description: dto.description,
+        type: dto.type,
+      };
+
+      // Log request details
+      this.logger.log(
+        `📤 CBS Transfer Request:\n` +
+        `   URL: ${this.cbsApiUrl}/cbs-adapter/payments/G2D\n` +
+        `   Payload: ${JSON.stringify(requestPayload, null, 2)}`,
+      );
 
       // Call CBS API with Bearer token
       const response = await firstValueFrom(
         this.httpService.post<TransferResponseDto>(
           `${this.cbsApiUrl}/cbs-adapter/payments/G2D`,
-          {
-            reference: dto.reference,
-            creditAccount: dto.creditAccount,
-            debitAccount: dto.debitAccount,
-            currency: dto.currency,
-            amount: dto.amount,
-            description: dto.description,
-            type: dto.type,
-          },
+          requestPayload,
           {
             headers: {
               'Content-Type': 'application/json',
@@ -97,6 +107,14 @@ export class CBSService {
             },
           },
         ),
+      );
+
+      // Log response details
+      this.logger.log(
+        `📥 CBS Transfer Response:\n` +
+        `   Status Code: ${response.data.statusCode}\n` +
+        `   Status Description: ${response.data.statusDescription}\n` +
+        `   Full Response: ${JSON.stringify(response.data, null, 2)}`,
       );
 
       // Process CBS response
@@ -144,6 +162,16 @@ export class CBSService {
       savedTransfer.status = TransferStatus.FAILED;
       savedTransfer.errorMessage = error.message;
       await this.transferRepo.save(savedTransfer);
+
+      // Log error details including response data if available
+      if (error.response) {
+        this.logger.error(
+          `❌ CBS Transfer Error Response:\n` +
+          `   Status: ${error.response.status}\n` +
+          `   Status Text: ${error.response.statusText}\n` +
+          `   Data: ${JSON.stringify(error.response.data, null, 2)}`,
+        );
+      }
 
       this.logger.error(`CBS transfer failed: ${error.message}`, error.stack);
 
