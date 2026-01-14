@@ -8,6 +8,7 @@ import { ServiceProviderBankAccount } from './entities/service-provider-bank-acc
 import { ServiceProviderSettings } from './entities/service-provider-settings.entity';
 import { WorkflowModule } from '../workflow/workflow.module';
 import { NotificationModule } from '../notification/notification.module';
+import { UserModule } from '../user/user.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { NotificationModule } from '../notification/notification.module';
     ]),
     WorkflowModule,
     NotificationModule,
+    UserModule,
   ],
   controllers: [ServiceProviderController],
   providers: [ServiceProviderService],
