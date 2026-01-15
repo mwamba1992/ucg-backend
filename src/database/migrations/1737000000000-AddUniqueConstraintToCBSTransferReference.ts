@@ -12,10 +12,31 @@ export class AddUniqueConstraintToCBSTransferReference1737000000000 implements M
       return;
     }
 
+    // First, handle NULL references - update them with unique values
+    const nullReferences = await queryRunner.query(`
+      SELECT id FROM cbs_transfers WHERE reference IS NULL
+    `);
+
+    if (nullReferences.length > 0) {
+      console.warn(
+        `Found ${nullReferences.length} CBS transfers with NULL references. ` +
+        `Updating them with unique values...`
+      );
+
+      for (let i = 0; i < nullReferences.length; i++) {
+        const uniqueRef = `NULL-REF-${Date.now()}-${i}`;
+        await queryRunner.query(
+          `UPDATE cbs_transfers SET reference = $1 WHERE id = $2`,
+          [uniqueRef, nullReferences[i].id]
+        );
+      }
+    }
+
     // Check if there are any duplicate references before adding the constraint
     const duplicates = await queryRunner.query(`
       SELECT reference, COUNT(*) as count
       FROM cbs_transfers
+      WHERE reference IS NOT NULL
       GROUP BY reference
       HAVING COUNT(*) > 1
     `);
