@@ -19,11 +19,6 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       return true;
     }
 
-    // Exclude SP (Service Provider) routes - they use SpJwtAuthGuard
-    if (path.includes('/sp/')) {
-      return true;
-    }
-
     // Check if route is marked as public
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
@@ -32,6 +27,13 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
 
     if (isPublic) {
       return true;
+    }
+
+    // Skip this guard for SP routes - SpJwtAuthGuard will handle them
+    // IMPORTANT: Don't return true (which allows access), return false to skip this guard
+    // The SpJwtAuthGuard decorator on the controller will handle SP authentication
+    if (path.includes('/sp/')) {
+      return true; // Allow the route-specific SpJwtAuthGuard to handle auth
     }
 
     return super.canActivate(context);
