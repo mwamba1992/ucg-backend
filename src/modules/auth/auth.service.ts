@@ -78,13 +78,24 @@ export class AuthService {
   }
 
   /**
-   * Login user
+   * Login user (Admin Portal Only)
+   * Service Provider users must use /auth/sp/login endpoint
    */
   async login(loginDto: LoginDto): Promise<AuthResponseDto> {
     const user = await this.validateUser(loginDto.email, loginDto.password);
 
     if (!user) {
       throw new UnauthorizedException('Invalid credentials');
+    }
+
+    // SECURITY: Prevent Service Provider users from logging into admin portal
+    if (user.userType === UserType.SERVICE_PROVIDER) {
+      throw new UnauthorizedException('Service Provider users must use the Service Provider portal to login');
+    }
+
+    // Only allow ADMIN type users
+    if (user.userType !== UserType.ADMIN) {
+      throw new UnauthorizedException('Access denied. This endpoint is for admin users only.');
     }
 
     // Get full user details including mustChangePassword flag
@@ -115,7 +126,8 @@ export class AuthService {
   }
 
   /**
-   * Register new user
+   * Register new user (Admin Portal Only)
+   * Service Provider registration should use /auth/sp/register
    */
   async register(registerDto: RegisterDto): Promise<AuthResponseDto> {
     // Check if user already exists
@@ -123,6 +135,11 @@ export class AuthService {
 
     if (existingUser) {
       throw new ConflictException('User with this email already exists');
+    }
+
+    // SECURITY: Prevent Service Provider registration through admin endpoint
+    if (registerDto.userType === UserType.SERVICE_PROVIDER) {
+      throw new BadRequestException('Service Provider registration must use the /auth/sp/register endpoint');
     }
 
     // Create new user
@@ -136,6 +153,11 @@ export class AuthService {
       role: registerDto.role || UserRole.VIEWER,
       status: UserStatus.PENDING, // Default to PENDING for approval
     });
+
+    // Ensure only ADMIN users are created
+    if (user.userType !== UserType.ADMIN) {
+      throw new BadRequestException('Only ADMIN users can register through this endpoint');
+    }
 
     // Generate tokens
     const tokens = await this.generateTokens(user);
@@ -158,13 +180,18 @@ export class AuthService {
   }
 
   /**
-   * Refresh access token
+   * Refresh access token (Admin Portal)
    */
   async refreshToken(userId: string, refreshToken: string): Promise<{ accessToken: string }> {
     const user = await this.userService.findOne(userId);
 
     if (!user || !user.refreshToken) {
       throw new UnauthorizedException('Invalid refresh token');
+    }
+
+    // SECURITY: Only allow ADMIN users to refresh admin tokens
+    if (user.userType !== UserType.ADMIN) {
+      throw new UnauthorizedException('Access denied. Admin users only.');
     }
 
     // Verify refresh token
@@ -180,6 +207,7 @@ export class AuthService {
       email: user.email,
       userType: user.userType,
       role: user.role,
+      type: 'ADMIN', // Mark token as admin type
     };
 
     const accessToken = this.jwtService.sign(payload);
@@ -195,7 +223,7 @@ export class AuthService {
   }
 
   /**
-   * Generate access and refresh tokens
+   * Generate access and refresh tokens for admin users
    */
   private async generateTokens(user: User): Promise<{
     accessToken: string;
@@ -206,6 +234,7 @@ export class AuthService {
       email: user.email,
       userType: user.userType,
       role: user.role,
+      type: 'ADMIN', // Mark token as admin type
     };
 
     const [accessToken, refreshToken] = await Promise.all([

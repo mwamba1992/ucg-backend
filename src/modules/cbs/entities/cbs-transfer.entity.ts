@@ -22,7 +22,7 @@ export enum TransferType {
 }
 
 @Entity('cbs_transfers')
-@Index(['reference'])
+@Index(['reference'], { unique: true })
 @Index(['paymentId'])
 @Index(['status'])
 export class CBSTransfer {
@@ -32,8 +32,8 @@ export class CBSTransfer {
   @Column({ type: 'uuid', nullable: true })
   paymentId: string; // Link to payment
 
-  @Column({ type: 'varchar', length: 50 })
-  reference: string; // CBS transaction reference
+  @Column({ type: 'varchar', length: 100, unique: true })
+  reference: string; // CBS transaction reference - MUST BE UNIQUE for all CBS transfers
 
   @Column({ type: 'varchar', length: 50 })
   creditAccount: string;

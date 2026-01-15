@@ -37,16 +37,55 @@ export class CBSService {
   }
 
   /**
+   * Generate unique CBS transfer reference
+   * Format: {paymentRef}-{hhmmss}{random}
+   * Example: TES-0000006-E2D-143052A7B
+   */
+  async generateUniqueCBSReference(paymentReference: string): Promise<string> {
+    const now = new Date();
+    const time = now.toISOString().slice(11, 19).replace(/:/g, ''); // hhmmss
+    const randomString = Math.random().toString(36).substring(2, 5).toUpperCase();
+
+    let reference = `${paymentReference}-${time}${randomString}`;
+
+    // Ensure uniqueness - check if reference already exists
+    let attempts = 0;
+    while (attempts < 10) {
+      const existing = await this.transferRepo.findOne({
+        where: { reference }
+      });
+
+      if (!existing) {
+        return reference;
+      }
+
+      // Generate new random string if collision detected
+      const newRandom = Math.random().toString(36).substring(2, 5).toUpperCase();
+      reference = `${paymentReference}-${time}${newRandom}`;
+      attempts++;
+    }
+
+    // Fallback to UUID if still collision after 10 attempts
+    const uuid = require('crypto').randomUUID().substring(0, 6).toUpperCase();
+    return `${paymentReference}-${time}${uuid}`;
+  }
+
+  /**
    * Execute fund transfer to CBS
    */
   async executeTransfer(
     dto: CreateTransferDto,
     paymentId?: string,
   ): Promise<TransferResult> {
+    // SECURITY: Generate unique CBS reference to prevent duplicate transfers
+    // The dto.reference is the payment reference (e.g., TES-0000006-E2D)
+    // We need a unique transfer reference for CBS
+    const uniqueCBSReference = await this.generateUniqueCBSReference(dto.reference);
+
     // Create transfer record
     const transfer = this.transferRepo.create({
       paymentId,
-      reference: dto.reference,
+      reference: uniqueCBSReference, // Use unique CBS transfer reference
       creditAccount: dto.creditAccount,
       debitAccount: dto.debitAccount,
       currency: dto.currency,
@@ -79,7 +118,7 @@ export class CBSService {
 
       // Prepare request payload
       const requestPayload = {
-        reference: dto.reference,
+        reference: uniqueCBSReference, // Use unique CBS transfer reference
         creditAccount: dto.creditAccount,
         debitAccount: dto.debitAccount,
         currency: dto.currency,
