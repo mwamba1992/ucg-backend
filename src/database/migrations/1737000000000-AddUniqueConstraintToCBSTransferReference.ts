@@ -22,7 +22,7 @@ export class AddUniqueConstraintToCBSTransferReference1737000000000 implements M
 
     if (duplicates.length > 0) {
       // If duplicates exist, we need to make them unique by appending a suffix
-      this.logger?.warn?.(
+      console.warn(
         `Found ${duplicates.length} duplicate CBS transfer references. ` +
         `Updating them to be unique before adding constraint...`
       );
