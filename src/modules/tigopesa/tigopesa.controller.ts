@@ -77,7 +77,8 @@ export class TigoPesaController {
     const startTime = Date.now();
 
     try {
-      this.logger.log('TigoPesa bill payment notification received');
+      this.logger.log('📥 ========== TIGOPESA INCOMING REQUEST ==========');
+      this.logger.log(`📥 Raw XML Request:\n${xmlBody}`);
 
       // Parse XML notification
       const notification = await this.tigopesaService.parseXmlNotification(xmlBody);
@@ -111,7 +112,12 @@ export class TigoPesaController {
         const responseTime = Date.now() - startTime;
         this.logger.log(`TigoPesa webhook response time: ${responseTime}ms (duplicate)`);
 
-        return this.tigopesaService.buildResponseXml(response);
+        const xmlResponse = this.tigopesaService.buildResponseXml(response);
+        this.logger.log('📤 ========== TIGOPESA OUTGOING RESPONSE (DUPLICATE) ==========');
+        this.logger.log(`📤 XML Response:\n${xmlResponse}`);
+        this.logger.log(`📤 Response Time: ${responseTime}ms`);
+
+        return xmlResponse;
       }
 
       // Create transaction record
@@ -171,7 +177,13 @@ export class TigoPesaController {
       const responseTime = Date.now() - startTime;
       this.logger.log(`TigoPesa webhook response time: ${responseTime}ms`);
 
-      return this.tigopesaService.buildResponseXml(response);
+      const xmlResponse = this.tigopesaService.buildResponseXml(response);
+      this.logger.log(`📤 ========== TIGOPESA OUTGOING RESPONSE (${response.RESULT === TigoPesaResult.SUCCESS ? 'SUCCESS' : 'FAILURE'}) ==========`);
+      this.logger.log(`📤 XML Response:\n${xmlResponse}`);
+      this.logger.log(`📤 Response Time: ${responseTime}ms`);
+      this.logger.log(`📤 RESULT: ${response.RESULT} | ERRORCODE: ${response.ERRORCODE}`);
+
+      return xmlResponse;
     } catch (error) {
       const responseTime = Date.now() - startTime;
       this.logger.error(
@@ -191,7 +203,13 @@ export class TigoPesaController {
         FLAG: 'N',
       };
 
-      return this.tigopesaService.buildResponseXml(errorResponse);
+      const xmlErrorResponse = this.tigopesaService.buildResponseXml(errorResponse);
+      this.logger.error('📤 ========== TIGOPESA OUTGOING RESPONSE (ERROR) ==========');
+      this.logger.error(`📤 XML Response:\n${xmlErrorResponse}`);
+      this.logger.error(`📤 Response Time: ${responseTime}ms`);
+      this.logger.error(`📤 Error: ${error.message}`);
+
+      return xmlErrorResponse;
     }
   }
 

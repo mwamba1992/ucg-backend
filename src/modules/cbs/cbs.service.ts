@@ -37,16 +37,55 @@ export class CBSService {
   }
 
   /**
+   * Generate unique CBS transfer reference
+   * Format: {paymentRef}-{hhmmss}{random}
+   * Example: TES-0000006-E2D-143052A7B
+   */
+  async generateUniqueCBSReference(paymentReference: string): Promise<string> {
+    const now = new Date();
+    const time = now.toISOString().slice(11, 19).replace(/:/g, ''); // hhmmss
+    const randomString = Math.random().toString(36).substring(2, 5).toUpperCase();
+
+    let reference = `${paymentReference}-${time}${randomString}`;
+
+    // Ensure uniqueness - check if reference already exists
+    let attempts = 0;
+    while (attempts < 10) {
+      const existing = await this.transferRepo.findOne({
+        where: { reference }
+      });
+
+      if (!existing) {
+        return reference;
+      }
+
+      // Generate new random string if collision detected
+      const newRandom = Math.random().toString(36).substring(2, 5).toUpperCase();
+      reference = `${paymentReference}-${time}${newRandom}`;
+      attempts++;
+    }
+
+    // Fallback to UUID if still collision after 10 attempts
+    const uuid = require('crypto').randomUUID().substring(0, 6).toUpperCase();
+    return `${paymentReference}-${time}${uuid}`;
+  }
+
+  /**
    * Execute fund transfer to CBS
    */
   async executeTransfer(
     dto: CreateTransferDto,
     paymentId?: string,
   ): Promise<TransferResult> {
+    // SECURITY: Generate unique CBS reference to prevent duplicate transfers
+    // The dto.reference is the payment reference (e.g., TES-0000006-E2D)
+    // We need a unique transfer reference for CBS
+    const uniqueCBSReference = await this.generateUniqueCBSReference(dto.reference);
+
     // Create transfer record
     const transfer = this.transferRepo.create({
       paymentId,
-      reference: dto.reference,
+      reference: uniqueCBSReference, // Use unique CBS transfer reference
       creditAccount: dto.creditAccount,
       debitAccount: dto.debitAccount,
       currency: dto.currency,
@@ -74,22 +113,32 @@ export class CBSService {
       );
 
       // Get access token
-      
+
       const token = await this.authService.loginClient();
+
+      // Prepare request payload
+      const requestPayload = {
+        reference: uniqueCBSReference, // Use unique CBS transfer reference
+        creditAccount: dto.creditAccount,
+        debitAccount: dto.debitAccount,
+        currency: dto.currency,
+        amount: dto.amount,
+        description: dto.description,
+        type: dto.type,
+      };
+
+      // Log request details
+      this.logger.log(
+        `📤 CBS Transfer Request:\n` +
+        `   URL: ${this.cbsApiUrl}/cbs-adapter/payments/G2D\n` +
+        `   Payload: ${JSON.stringify(requestPayload, null, 2)}`,
+      );
 
       // Call CBS API with Bearer token
       const response = await firstValueFrom(
         this.httpService.post<TransferResponseDto>(
           `${this.cbsApiUrl}/cbs-adapter/payments/G2D`,
-          {
-            reference: dto.reference,
-            creditAccount: dto.creditAccount,
-            debitAccount: dto.debitAccount,
-            currency: dto.currency,
-            amount: dto.amount,
-            description: dto.description,
-            type: dto.type,
-          },
+          requestPayload,
           {
             headers: {
               'Content-Type': 'application/json',
@@ -99,7 +148,18 @@ export class CBSService {
         ),
       );
 
-      // Process CBS response
+      // Log response details
+      const isSuccess = response.data.statusCode === '6200';
+      this.logger.log(
+        `📥 CBS Transfer Response:\n` +
+        `   Status Code: ${response.data.statusCode} ${isSuccess ? '✅ (SUCCESS)' : '❌ (FAILURE)'}\n` +
+        `   Status Description: ${response.data.statusDescription}\n` +
+        `   Full Response: ${JSON.stringify(response.data, null, 2)}`,
+      );
+
+      // Process CBS response - ONLY 6200 is success, all others are failure
+      // IMPORTANT: CBS API returns statusCode "6200" for successful transfers
+      // Any other status code (e.g., 6201, 6500, etc.) indicates FAILURE
       if (response.data.statusCode === '6200') {
         savedTransfer.status = TransferStatus.SUCCESS;
         savedTransfer.cbsResponseCode = response.data.statusCode;
@@ -110,7 +170,7 @@ export class CBSService {
         await this.transferRepo.save(savedTransfer);
 
         this.logger.log(
-          `CBS transfer successful: ${response.data.response.reference} - ${response.data.statusDescription}`,
+          `✅ CBS transfer SUCCESS: Status code 6200 - ${response.data.response.reference} - ${response.data.statusDescription}`,
         );
 
         return {
@@ -121,15 +181,16 @@ export class CBSService {
           statusDescription: response.data.statusDescription,
         };
       } else {
+        // Any status code other than 6200 is a failure
         savedTransfer.status = TransferStatus.FAILED;
         savedTransfer.cbsResponseCode = response.data.statusCode;
         savedTransfer.cbsResponseMessage = response.data.statusDescription;
-        savedTransfer.errorMessage = `CBS returned non-success code: ${response.data.statusCode}`;
+        savedTransfer.errorMessage = `CBS transfer failed: Status code ${response.data.statusCode} (Only 6200 is success) - ${response.data.statusDescription}`;
 
         await this.transferRepo.save(savedTransfer);
 
         this.logger.warn(
-          `CBS transfer failed: ${response.data.statusCode} - ${response.data.statusDescription}`,
+          `❌ CBS transfer FAILED: Status code ${response.data.statusCode} (Only 6200 is success) - ${response.data.statusDescription}`,
         );
 
         return {
@@ -144,6 +205,16 @@ export class CBSService {
       savedTransfer.status = TransferStatus.FAILED;
       savedTransfer.errorMessage = error.message;
       await this.transferRepo.save(savedTransfer);
+
+      // Log error details including response data if available
+      if (error.response) {
+        this.logger.error(
+          `❌ CBS Transfer Error Response:\n` +
+          `   Status: ${error.response.status}\n` +
+          `   Status Text: ${error.response.statusText}\n` +
+          `   Data: ${JSON.stringify(error.response.data, null, 2)}`,
+        );
+      }
 
       this.logger.error(`CBS transfer failed: ${error.message}`, error.stack);
 

@@ -120,6 +120,9 @@ export class User {
   @Column({ type: 'timestamp', nullable: true })
   deletedAt: Date;
 
+  @Column({ type: 'boolean', default: false })
+  mustChangePassword: boolean;
+
   // Hash password before insert
   @BeforeInsert()
   @BeforeUpdate()

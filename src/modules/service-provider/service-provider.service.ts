@@ -18,6 +18,8 @@ import { CreateBankAccountDto } from './dto/bank-account.dto';
 import { UpdateBankAccountDto } from './dto/update-bank-account.dto';
 import { WorkflowService } from '../workflow/workflow.service';
 import { NotificationService } from '../notification/notification.service';
+import { UserService } from '../user/user.service';
+import { UserType, UserRole } from '../user/entities/user.entity';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -35,6 +37,7 @@ export class ServiceProviderService {
     private readonly settingsRepository: Repository<ServiceProviderSettings>,
     private readonly workflowService: WorkflowService,
     private readonly notificationService: NotificationService,
+    private readonly userService: UserService,
   ) {}
 
   /**
@@ -67,6 +70,35 @@ export class ServiceProviderService {
    */
   private generateApiKey(): string {
     return `ucg_${crypto.randomBytes(32).toString('hex')}`;
+  }
+
+  /**
+   * Generate a secure random password for service provider
+   * Password contains: uppercase, lowercase, numbers, and special characters
+   * Length: 12 characters
+   */
+  private generateSecurePassword(): string {
+    const uppercaseChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const lowercaseChars = 'abcdefghijklmnopqrstuvwxyz';
+    const numberChars = '0123456789';
+    const specialChars = '@#$%&*!';
+
+    const allChars = uppercaseChars + lowercaseChars + numberChars + specialChars;
+
+    // Ensure at least one character from each category
+    let password = '';
+    password += uppercaseChars[crypto.randomInt(0, uppercaseChars.length)];
+    password += lowercaseChars[crypto.randomInt(0, lowercaseChars.length)];
+    password += numberChars[crypto.randomInt(0, numberChars.length)];
+    password += specialChars[crypto.randomInt(0, specialChars.length)];
+
+    // Fill the rest randomly (total length: 12 characters)
+    for (let i = password.length; i < 12; i++) {
+      password += allChars[crypto.randomInt(0, allChars.length)];
+    }
+
+    // Shuffle the password to avoid predictable patterns
+    return password.split('').sort(() => crypto.randomInt(0, 2) - 0.5).join('');
   }
 
   /**
@@ -452,6 +484,59 @@ export class ServiceProviderService {
     serviceProvider.isActive = true;
 
     await this.serviceProviderRepository.save(serviceProvider);
+
+    // Create user account for the service provider with randomly generated password
+    try {
+      // Check if user already exists
+      const existingUser = await this.userService.findByEmail(serviceProvider.email);
+
+      if (!existingUser) {
+        this.logger.log(`Creating user account for SP: ${serviceProvider.email}`);
+
+        // Get contact person name from contact
+        const contact = serviceProvider.contact;
+        const firstName = contact?.fullName?.split(' ')[0] || 'Service';
+        const lastName = contact?.fullName?.split(' ').slice(1).join(' ') || 'Provider';
+
+        // Generate secure random password for this service provider
+        const randomPassword = this.generateSecurePassword();
+
+        // Create user with randomly generated password
+        await this.userService.create({
+          firstName,
+          lastName,
+          email: serviceProvider.email,
+          phoneNumber: serviceProvider.phoneNumber,
+          password: randomPassword,
+          userType: UserType.SERVICE_PROVIDER,
+          role: UserRole.SP_ADMIN,
+          status: 'ACTIVE' as any,
+        });
+
+        // Mark user as must change password
+        const newUser = await this.userService.findByEmail(serviceProvider.email);
+        if (newUser) {
+          await this.userService.update(newUser.id, {
+            mustChangePassword: true,
+          } as any);
+        }
+
+        this.logger.log(`User account created successfully for SP: ${serviceProvider.email}`);
+
+        // Send randomly generated password via SMS
+        await this.notificationService.sendSMS(
+          serviceProvider.phoneNumber,
+          `Welcome to UCG! Your account has been created.\n\nEmail: ${serviceProvider.email}\nTemporary Password: ${randomPassword}\n\nIMPORTANT: You must change this password on first login.\n\nLogin at: https://sp.ucg.co.tz`,
+          'UCG - Account Created',
+        );
+        this.logger.log(`Temporary password sent via SMS to: ${serviceProvider.phoneNumber}`);
+      } else {
+        this.logger.warn(`User already exists for SP: ${serviceProvider.email}`);
+      }
+    } catch (error) {
+      this.logger.error(`Failed to create user account for SP: ${error.message}`);
+      // Continue with approval even if user creation fails
+    }
 
     // Send approval notification
     try {

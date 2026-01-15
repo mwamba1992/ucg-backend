@@ -31,7 +31,6 @@ import { PaymentStatus } from '../payment/entities/payment.entity';
 @Injectable()
 export class MpesaService {
   private readonly logger = new Logger(MpesaService.name);
-  private readonly ucgGLAccount: string;
   private readonly mpesaCallbackUrl: string;
 
   constructor(
@@ -46,7 +45,6 @@ export class MpesaService {
     private readonly paymentService: PaymentService,
     private readonly cbsService: CBSService,
   ) {
-    this.ucgGLAccount = this.configService.get<string>('UCG_GL_ACCOUNT') || '1000000001';
     this.mpesaCallbackUrl = this.configService.get<string>('MPESA_CALLBACK_URL');
   }
 
@@ -405,7 +403,7 @@ export class MpesaService {
 
       const reference = validation.reference;
 
-      // 2. Create payment record
+      // 2. Create payment record (PaymentService handles CBS transfer internally)
       this.logger.log(
         `Creating payment record for ${message.referenceNumber}: ${message.amount}`,
       );
@@ -422,65 +420,14 @@ export class MpesaService {
         description: `M-Pesa payment: ${message.mpesaReceipt}`,
       });
 
-      this.logger.log(`Payment created: ${payment.id}`);
+      this.logger.log(`Payment created: ${payment.id} - CBS transfer handled by PaymentService`);
 
-      // 3. Execute CBS transfer (GL → Deposit)
-      let cbsTransferId: string = null;
-
-      try {
-        const serviceProvider = reference.serviceProvider;
-        const primaryBankAccount = serviceProvider.bankAccounts?.find(
-          (account) => account.isPrimary && account.isActive,
-        );
-
-        if (!primaryBankAccount) {
-          this.logger.warn(
-            `No primary bank account for SP ${serviceProvider.businessName} - skipping CBS transfer`,
-          );
-        } else {
-          this.logger.log(
-            `Executing CBS transfer: ${message.amount} from ${this.ucgGLAccount} to ${primaryBankAccount.accountNumber}`,
-          );
-
-          const transferResult = await this.cbsService.executeTransfer(
-            {
-              reference: message.referenceNumber,
-              creditAccount: primaryBankAccount.accountNumber,
-              debitAccount: this.ucgGLAccount,
-              currency: reference.currency || 'TZS',
-              amount: message.amount,
-              description: `M-Pesa settlement: ${message.mpesaReceipt}`,
-              type: TransferType.GL_TO_DEPOSIT,
-            },
-            payment.id,
-          );
-
-          if (transferResult.success) {
-            cbsTransferId = transferResult.transferId;
-            this.logger.log(
-              `CBS transfer successful: ${transferResult.cbsReference}`,
-            );
-          } else {
-            this.logger.error(
-              `CBS transfer failed: ${transferResult.error}`,
-            );
-            // Don't fail the payment, just log the error
-          }
-        }
-      } catch (cbsError) {
-        this.logger.error(
-          `CBS transfer error: ${cbsError.message}`,
-          cbsError.stack,
-        );
-        // Don't fail the payment
-      }
-
-      // 4. Update M-Pesa transaction status
+      // 3. Update M-Pesa transaction status
       await this.updateTransactionStatus(
         message.mpesaReceipt,
         MpesaTransactionStatus.COMPLETED,
         payment.id,
-        cbsTransferId,
+        null, // cbsTransferId managed by PaymentService
       );
 
       this.logger.log(
@@ -491,7 +438,7 @@ export class MpesaService {
         success: true,
         mpesaReceipt: message.mpesaReceipt,
         paymentId: payment.id,
-        cbsTransferId,
+        cbsTransferId: undefined, // CBS transfer managed by PaymentService
       };
     } catch (error) {
       this.logger.error(

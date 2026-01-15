@@ -1,5 +1,9 @@
 import { TypeOrmModuleOptions } from '@nestjs/typeorm';
 import { DataSource, DataSourceOptions } from 'typeorm';
+import { config } from 'dotenv';
+
+// Load environment variables from .env file
+config();
 
 export const typeOrmConfig = (): TypeOrmModuleOptions => ({
   type: 'postgres',
@@ -26,6 +30,14 @@ const dataSourceOptions: DataSourceOptions = {
   entities: [__dirname + '/../**/*.entity{.ts,.js}'],
   migrations: [__dirname + '/../database/migrations/*{.ts,.js}'],
   synchronize: false,
+  logging: true, // Enable logging for migrations
 };
+
+// Log the connection details for debugging (remove password for security)
+console.log('🔧 TypeORM Migration Configuration:');
+console.log(`   Host: ${dataSourceOptions.host}`);
+console.log(`   Port: ${dataSourceOptions.port}`);
+console.log(`   Database: ${dataSourceOptions.database}`);
+console.log(`   Username: ${dataSourceOptions.username}`);
 
 export default new DataSource(dataSourceOptions);

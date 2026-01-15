@@ -10,6 +10,7 @@ import { PaymentProducer } from './payment.producer';
 import { NotificationService } from '../notification/notification.service';
 import { CBSService } from '../cbs/cbs.service';
 import { TransferType } from '../cbs/entities/cbs-transfer.entity';
+import { FinancialServiceProvider } from '../financial-service-provider/entities/financial-service-provider.entity';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -21,6 +22,8 @@ export class PaymentService {
     private readonly paymentRepo: Repository<Payment>,
     @InjectRepository(PaymentReference)
     private readonly referenceRepo: Repository<PaymentReference>,
+    @InjectRepository(FinancialServiceProvider)
+    private readonly fspRepo: Repository<FinancialServiceProvider>,
     private readonly referenceService: ReferenceService,
     @Inject(forwardRef(() => PaymentProducer))
     private readonly paymentProducer: PaymentProducer,
@@ -60,6 +63,49 @@ export class PaymentService {
       );
     }
 
+    // Check if CBS transfer is enabled and validate FSP/GL account BEFORE creating payment
+    const cbsTransferEnabled = process.env.CBS_TRANSFER_ENABLED === 'true';
+    let fsp: FinancialServiceProvider = null;
+
+    if (cbsTransferEnabled) {
+      const serviceProvider = reference.serviceProvider;
+      const settings = serviceProvider.settings;
+
+      if (!settings) {
+        throw new BadRequestException(
+          `Service provider has no settings configured - cannot process payment`,
+        );
+      }
+
+      // Get primary bank account for service provider
+      const primaryBankAccount = serviceProvider.bankAccounts?.find(
+        (account) => account.isPrimary && account.isActive,
+      );
+
+      if (!primaryBankAccount) {
+        throw new BadRequestException(
+          `Service provider has no active primary bank account - cannot process payment`,
+        );
+      }
+
+      // Get FSP GL account from database based on payment's fspCode
+      fsp = await this.fspRepo.findOne({
+        where: { fspCode: dto.fspCode },
+      });
+
+      if (!fsp) {
+        throw new BadRequestException(
+          `FSP not found for code: ${dto.fspCode} - cannot process payment`,
+        );
+      }
+
+      if (!fsp.glAccountNumber) {
+        throw new BadRequestException(
+          `FSP ${fsp.name} (${fsp.fspCode}) has no GL account configured - cannot process payment`,
+        );
+      }
+    }
+
     // Create payment record
     const payment = this.paymentRepo.create({
       ...dto,
@@ -76,16 +122,36 @@ export class PaymentService {
       `Total paid: ${Number(reference.totalPaid) + Number(dto.amountPaid)}/${reference.amount}`,
     );
 
-    // Execute CBS transfer to settle funds
-    try {
-      await this.executeCBSTransfer(savedPayment, reference);
-    } catch (error) {
-      this.logger.error(`Failed to execute CBS transfer: ${error.message}`);
-      // Don't fail the payment, but log the error
-      // Transfer can be retried later
+    // Execute CBS transfer to settle funds - MUST succeed if CBS is enabled
+    if (cbsTransferEnabled) {
+      const transferResult = await this.executeCBSTransferRequired(savedPayment, reference, fsp);
+
+      if (!transferResult.success) {
+        // CBS transfer failed - rollback payment and reference updates
+        this.logger.error(
+          `CBS transfer failed - rolling back payment ${savedPayment.id}: ${transferResult.error}`,
+        );
+
+        // Delete payment record
+        await this.paymentRepo.remove(savedPayment);
+
+        // Rollback reference updates
+        reference.totalPaid = Number(reference.totalPaid) - Number(dto.amountPaid);
+        reference.installmentCount -= 1;
+        if (reference.status === ReferenceStatus.USED) {
+          reference.status = ReferenceStatus.ACTIVE;
+          reference.usedAt = null;
+          reference.transactionId = null;
+        }
+        await this.referenceRepo.save(reference);
+
+        throw new BadRequestException(
+          `Payment processing failed: CBS transfer error - ${transferResult.error}`,
+        );
+      }
     }
 
-    // Send notifications after successful payment
+    // Send notifications after successful payment (non-blocking)
     try {
       // Notify customer
       await this.notificationService.notifyCustomerPaymentSuccess(
@@ -107,13 +173,85 @@ export class PaymentService {
       );
     } catch (error) {
       this.logger.error(`Failed to send payment notifications: ${error.message}`);
+      // Don't fail payment for notification errors
     }
 
     return savedPayment;
   }
 
   /**
-   * Execute CBS transfer for payment settlement
+   * Execute CBS transfer for payment settlement (REQUIRED - fails payment if it fails)
+   */
+  private async executeCBSTransferRequired(
+    payment: Payment,
+    reference: PaymentReference,
+    fsp: FinancialServiceProvider,
+  ): Promise<{ success: boolean; error?: string }> {
+    const serviceProvider = reference.serviceProvider;
+    const primaryBankAccount = serviceProvider.bankAccounts?.find(
+      (account) => account.isPrimary && account.isActive,
+    );
+
+    if (!primaryBankAccount) {
+      return {
+        success: false,
+        error: `No primary bank account for SP ${serviceProvider.businessName}`,
+      };
+    }
+
+    // Calculate commission and net amount
+    const grossAmount = Number(payment.amountPaid);
+    const commissionRate = 0; // TODO: Make configurable via settings or config
+    const commission = this.cbsService.calculateCommission(
+      grossAmount,
+      commissionRate,
+    );
+    const netAmount = grossAmount - commission;
+
+    // Use FSP's GL account as the source (debit account)
+    const fspGLAccount = fsp.glAccountNumber;
+    const spDepositAccount = primaryBankAccount.accountNumber;
+
+    this.logger.log(
+      `Initiating CBS transfer: ` +
+      `FSP: ${fsp.name} (${fsp.fspCode}) | ` +
+      `Amount: ${netAmount} (Gross: ${grossAmount}, Commission: ${commission}, Rate: ${commissionRate}%) | ` +
+      `From: ${fspGLAccount} (${fsp.glAccountName || 'FSP GL Account'}) | ` +
+      `To: ${spDepositAccount} (${serviceProvider.businessName})`,
+    );
+
+    // Execute transfer
+    const transferResult = await this.cbsService.executeTransfer(
+      {
+        reference: payment.referenceNumber,
+        creditAccount: spDepositAccount,
+        debitAccount: fspGLAccount,
+        currency: payment.currency || 'TZS',
+        amount: netAmount,
+        description: `Payment settlement for ${reference.referenceNumber} via ${fsp.name} - ${serviceProvider.businessName}`,
+        type: TransferType.GL_TO_DEPOSIT,
+      },
+      payment.id,
+    );
+
+    if (transferResult.success) {
+      this.logger.log(
+        `CBS transfer successful for payment ${payment.id}: ${transferResult.cbsReference}`,
+      );
+      return { success: true };
+    } else {
+      this.logger.error(
+        `CBS transfer failed for payment ${payment.id}: ${transferResult.error}`,
+      );
+      return {
+        success: false,
+        error: transferResult.error || 'CBS transfer failed',
+      };
+    }
+  }
+
+  /**
+   * Execute CBS transfer for payment settlement (OPTIONAL - for backward compatibility)
    */
   private async executeCBSTransfer(
     payment: Payment,
@@ -149,6 +287,25 @@ export class PaymentService {
       return;
     }
 
+    // Get FSP GL account from database based on payment's fspCode
+    const fsp = await this.fspRepo.findOne({
+      where: { fspCode: payment.fspCode },
+    });
+
+    if (!fsp) {
+      this.logger.error(
+        `FSP not found for code: ${payment.fspCode} - cannot execute CBS transfer`,
+      );
+      return;
+    }
+
+    if (!fsp.glAccountNumber) {
+      this.logger.error(
+        `FSP ${fsp.name} (${fsp.fspCode}) has no GL account configured - cannot execute CBS transfer`,
+      );
+      return;
+    }
+
     // Calculate commission and net amount
     // NOTE: Commission rate is set to 0 for now (configurable in future)
     const grossAmount = Number(payment.amountPaid);
@@ -159,14 +316,16 @@ export class PaymentService {
     );
     const netAmount = grossAmount - commission;
 
-    // Get UCG GL account from environment or config
-    const ucgGLAccount = process.env.UCG_GL_ACCOUNT;
+    // Use FSP's GL account as the source (debit account)
+    const fspGLAccount = fsp.glAccountNumber;
     const spDepositAccount = primaryBankAccount.accountNumber;
 
     this.logger.log(
       `Initiating CBS transfer: ` +
-      `Amount: ${netAmount} (Gross: ${grossAmount}, Commission: ${commission}, Rate: ${commissionRate}%) ` +
-      `from ${ucgGLAccount} to ${spDepositAccount}`,
+      `FSP: ${fsp.name} (${fsp.fspCode}) | ` +
+      `Amount: ${netAmount} (Gross: ${grossAmount}, Commission: ${commission}, Rate: ${commissionRate}%) | ` +
+      `From: ${fspGLAccount} (${fsp.glAccountName || 'FSP GL Account'}) | ` +
+      `To: ${spDepositAccount} (${serviceProvider.businessName})`,
     );
 
     // Execute transfer
@@ -174,10 +333,10 @@ export class PaymentService {
       {
         reference: payment.referenceNumber,
         creditAccount: spDepositAccount,
-        debitAccount: ucgGLAccount,
+        debitAccount: fspGLAccount,
         currency: payment.currency || 'TZS',
         amount: netAmount,
-        description: `Payment settlement for ${reference.referenceNumber} - ${serviceProvider.businessName}`,
+        description: `Payment settlement for ${reference.referenceNumber} via ${fsp.name} - ${serviceProvider.businessName}`,
         type: TransferType.GL_TO_DEPOSIT,
       },
       payment.id,

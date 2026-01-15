@@ -18,6 +18,9 @@ import { TigoPesaPaymentMessage } from './dto/tigopesa-queue.dto';
 export class TigoPesaConsumer {
   private readonly logger = new Logger(TigoPesaConsumer.name);
 
+
+
+  
   constructor(private readonly tigopesaService: TigoPesaService) {}
 
   /**
