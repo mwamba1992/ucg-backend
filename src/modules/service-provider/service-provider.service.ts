@@ -25,7 +25,6 @@ import * as crypto from 'crypto';
 @Injectable()
 export class ServiceProviderService {
   private readonly logger = new Logger(ServiceProviderService.name);
-  private readonly DEFAULT_PASSWORD = 'Password@123';
 
   constructor(
     @InjectRepository(ServiceProvider)
@@ -71,6 +70,35 @@ export class ServiceProviderService {
    */
   private generateApiKey(): string {
     return `ucg_${crypto.randomBytes(32).toString('hex')}`;
+  }
+
+  /**
+   * Generate a secure random password for service provider
+   * Password contains: uppercase, lowercase, numbers, and special characters
+   * Length: 12 characters
+   */
+  private generateSecurePassword(): string {
+    const uppercaseChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const lowercaseChars = 'abcdefghijklmnopqrstuvwxyz';
+    const numberChars = '0123456789';
+    const specialChars = '@#$%&*!';
+
+    const allChars = uppercaseChars + lowercaseChars + numberChars + specialChars;
+
+    // Ensure at least one character from each category
+    let password = '';
+    password += uppercaseChars[crypto.randomInt(0, uppercaseChars.length)];
+    password += lowercaseChars[crypto.randomInt(0, lowercaseChars.length)];
+    password += numberChars[crypto.randomInt(0, numberChars.length)];
+    password += specialChars[crypto.randomInt(0, specialChars.length)];
+
+    // Fill the rest randomly (total length: 12 characters)
+    for (let i = password.length; i < 12; i++) {
+      password += allChars[crypto.randomInt(0, allChars.length)];
+    }
+
+    // Shuffle the password to avoid predictable patterns
+    return password.split('').sort(() => crypto.randomInt(0, 2) - 0.5).join('');
   }
 
   /**
@@ -457,7 +485,7 @@ export class ServiceProviderService {
 
     await this.serviceProviderRepository.save(serviceProvider);
 
-    // Create user account for the service provider with default password
+    // Create user account for the service provider with randomly generated password
     try {
       // Check if user already exists
       const existingUser = await this.userService.findByEmail(serviceProvider.email);
@@ -470,13 +498,16 @@ export class ServiceProviderService {
         const firstName = contact?.fullName?.split(' ')[0] || 'Service';
         const lastName = contact?.fullName?.split(' ').slice(1).join(' ') || 'Provider';
 
-        // Create user with default password
+        // Generate secure random password for this service provider
+        const randomPassword = this.generateSecurePassword();
+
+        // Create user with randomly generated password
         await this.userService.create({
           firstName,
           lastName,
           email: serviceProvider.email,
           phoneNumber: serviceProvider.phoneNumber,
-          password: this.DEFAULT_PASSWORD,
+          password: randomPassword,
           userType: UserType.SERVICE_PROVIDER,
           role: UserRole.SP_ADMIN,
           status: 'ACTIVE' as any,
@@ -492,13 +523,13 @@ export class ServiceProviderService {
 
         this.logger.log(`User account created successfully for SP: ${serviceProvider.email}`);
 
-        // Send default password via SMS
+        // Send randomly generated password via SMS
         await this.notificationService.sendSMS(
           serviceProvider.phoneNumber,
-          `Welcome to UCG! Your account has been created.\n\nEmail: ${serviceProvider.email}\nDefault Password: ${this.DEFAULT_PASSWORD}\n\nIMPORTANT: You must change this password on first login.\n\nLogin at: https://sp.ucg.co.tz`,
+          `Welcome to UCG! Your account has been created.\n\nEmail: ${serviceProvider.email}\nTemporary Password: ${randomPassword}\n\nIMPORTANT: You must change this password on first login.\n\nLogin at: https://sp.ucg.co.tz`,
           'UCG - Account Created',
         );
-        this.logger.log(`Default password sent via SMS to: ${serviceProvider.phoneNumber}`);
+        this.logger.log(`Temporary password sent via SMS to: ${serviceProvider.phoneNumber}`);
       } else {
         this.logger.warn(`User already exists for SP: ${serviceProvider.email}`);
       }
