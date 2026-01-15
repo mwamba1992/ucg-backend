@@ -550,4 +550,36 @@ export class AuthService {
       .substring(0, 3);
   }
 
+  /**
+   * Change password for Service Provider user
+   */
+  async spChangePassword(
+    email: string,
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<void> {
+    // Find the user by email (SP users have a User record created during approval)
+    const user = await this.userService.findByEmail(email);
+
+    if (!user) {
+      throw new BadRequestException('User account not found');
+    }
+
+    // Verify current password
+    const isPasswordValid = await user.validatePassword(currentPassword);
+    if (!isPasswordValid) {
+      throw new BadRequestException('Current password is incorrect');
+    }
+
+    // Change the password
+    await this.userService.changePassword(user.id, currentPassword, newPassword);
+
+    // Reset mustChangePassword flag
+    await this.userService.update(user.id, {
+      mustChangePassword: false,
+    } as any);
+
+    this.logger.log(`Password changed successfully for SP user: ${email}`);
+  }
+
 }

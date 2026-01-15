@@ -14,10 +14,12 @@ import { RegisterDto } from './dto/register.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { SpJwtAuthGuard } from './guards/sp-jwt-auth.guard';
 import { LocalAuthGuard } from './guards/local-auth.guard';
 import { Public } from './decorators/public.decorator';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { User } from '../user/entities/user.entity';
+import { ServiceProvider } from '../service-provider/entities/service-provider.entity';
 import { UserResponseDto } from '../user/dto/user-response.dto';
 
 @ApiTags('Authentication')
@@ -202,5 +204,30 @@ Required fields:
     data: any;
   }> {
     return await this.authService.spRegister(registerDto);
+  }
+
+  /**
+   * Service Provider Change Password
+   */
+  @UseGuards(SpJwtAuthGuard)
+  @Post('sp/change-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Change password for Service Provider users',
+    description: 'Allows service provider users to change their password. This also clears the mustChangePassword flag.',
+  })
+  @ApiResponse({ status: 200, description: 'Password changed successfully' })
+  @ApiResponse({ status: 400, description: 'Current password is incorrect' })
+  @ApiResponse({ status: 401, description: 'Unauthorized - invalid token' })
+  async spChangePassword(
+    @CurrentUser() serviceProvider: ServiceProvider,
+    @Body() changePasswordDto: ChangePasswordDto,
+  ): Promise<{ message: string }> {
+    await this.authService.spChangePassword(
+      serviceProvider.email,
+      changePasswordDto.currentPassword,
+      changePasswordDto.newPassword,
+    );
+    return { message: 'Password changed successfully' };
   }
 }
