@@ -44,7 +44,7 @@ export class UserService {
    * Find all users with pagination and filtering
    */
   async findAll(query: QueryUserDto) {
-    const { page = 1, limit = 10, email, role, status, search } = query;
+    const { page = 1, limit = 10, email, userType, role, status, search } = query;
 
     const where: any = {
       deletedAt: IsNull(),
@@ -52,6 +52,10 @@ export class UserService {
 
     if (email) {
       where.email = email;
+    }
+
+    if (userType) {
+      where.userType = userType;
     }
 
     if (role) {
