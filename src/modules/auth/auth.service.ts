@@ -322,6 +322,7 @@ export class AuthService {
    * Service Provider Login
    * Login with email and password for service provider portal access
    * SECURITY: Requires User account with password validation
+   * Supports both main SP accounts and SP staff users
    */
   async spLogin(loginDto: LoginDto): Promise<{
     accessToken: string;
@@ -329,17 +330,52 @@ export class AuthService {
     serviceProvider: any;
     user?: any;
   }> {
-    // Find service provider by email
-    const serviceProvider = await this.serviceProviderRepository.findOne({
+    // STEP 1: Find user by email first
+    const userRecord = await this.userService.findByEmail(loginDto.email);
+
+    if (!userRecord) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    if (userRecord.userType !== UserType.SERVICE_PROVIDER) {
+      throw new UnauthorizedException('Invalid credentials - not a service provider user');
+    }
+
+    // STEP 2: Validate password
+    const isPasswordValid = await userRecord.validatePassword(loginDto.password);
+    if (!isPasswordValid) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    // STEP 3: Verify user account is active
+    if (userRecord.status !== UserStatus.ACTIVE) {
+      throw new UnauthorizedException('User account is not active');
+    }
+
+    if (userRecord.deletedAt) {
+      throw new UnauthorizedException('User account has been deleted');
+    }
+
+    // STEP 4: Find associated service provider
+    // First try by email (main SP account), then by createdBy (staff user)
+    let serviceProvider = await this.serviceProviderRepository.findOne({
       where: { email: loginDto.email },
       relations: ['contact', 'bankAccounts', 'settings'],
     });
 
-    if (!serviceProvider) {
-      throw new UnauthorizedException('Invalid credentials');
+    // If not found by email, this is a staff user - find SP by createdBy
+    if (!serviceProvider && userRecord.createdBy) {
+      serviceProvider = await this.serviceProviderRepository.findOne({
+        where: { id: userRecord.createdBy },
+        relations: ['contact', 'bankAccounts', 'settings'],
+      });
     }
 
-    // Verify service provider is active and approved
+    if (!serviceProvider) {
+      throw new UnauthorizedException('No associated service provider found');
+    }
+
+    // STEP 5: Verify service provider is active and approved
     if (!serviceProvider.isActive) {
       throw new UnauthorizedException('Service Provider account is not active');
     }
@@ -350,32 +386,6 @@ export class AuthService {
 
     if (serviceProvider.deletedAt) {
       throw new UnauthorizedException('Service Provider account has been deleted');
-    }
-
-    // SECURITY FIX: ALWAYS require User account for login with password validation
-    const userRecord = await this.userService.findByEmail(loginDto.email);
-
-    if (!userRecord) {
-      throw new UnauthorizedException('Invalid credentials - no user account found');
-    }
-
-    if (userRecord.userType !== UserType.SERVICE_PROVIDER) {
-      throw new UnauthorizedException('Invalid credentials - not a service provider user');
-    }
-
-    // CRITICAL: Validate password
-    const isPasswordValid = await userRecord.validatePassword(loginDto.password);
-    if (!isPasswordValid) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
-
-    // Verify user account is active
-    if (userRecord.status !== UserStatus.ACTIVE) {
-      throw new UnauthorizedException('User account is not active');
-    }
-
-    if (userRecord.deletedAt) {
-      throw new UnauthorizedException('User account has been deleted');
     }
 
     // Get full user details including mustChangePassword flag
