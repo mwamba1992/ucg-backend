@@ -208,7 +208,17 @@ export class PaymentController {
   @ApiResponse({
     status: 200,
     description: 'List of payments for the reference number',
-    type: [Payment],
+    schema: {
+      example: {
+        success: true,
+        data: {
+          referenceNumber: 'TES-0000006-E2D',
+          payments: [],
+          totalPaid: 50000,
+          paymentCount: 1,
+        },
+      },
+    },
   })
   @ApiResponse({ status: 404, description: 'No payments found for this reference' })
   async getPaymentsByReference(@Param('referenceNumber') referenceNumber: string) {
@@ -218,7 +228,26 @@ export class PaymentController {
       throw new NotFoundException('No payments found for this reference');
     }
 
-    return payments;
+    const totalPaid = payments.reduce((sum, p) => sum + Number(p.amountPaid), 0);
+
+    return {
+      success: true,
+      data: {
+        referenceNumber,
+        payments: payments.map((payment) => ({
+          id: payment.id,
+          amountPaid: payment.amountPaid,
+          payerName: payment.payerName,
+          payerPhone: payment.payerPhone,
+          paymentChannel: payment.paymentChannel,
+          status: payment.status,
+          currency: payment.currency,
+          paidAt: payment.paidAt,
+        })),
+        totalPaid,
+        paymentCount: payments.length,
+      },
+    };
   }
 
   @Get(':referenceNumber/summary')

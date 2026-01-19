@@ -44,7 +44,7 @@ export class UserService {
    * Find all users with pagination and filtering
    */
   async findAll(query: QueryUserDto) {
-    const { page = 1, limit = 10, email, role, status, search } = query;
+    const { page = 1, limit = 10, email, role, status, search, userType } = query;
 
     const where: any = {
       deletedAt: IsNull(),
@@ -60,6 +60,10 @@ export class UserService {
 
     if (status) {
       where.status = status;
+    }
+
+    if (userType) {
+      where.userType = userType;
     }
 
     // Build query
@@ -116,7 +120,7 @@ export class UserService {
   async findByEmail(email: string): Promise<User | null> {
     return await this.userRepository.findOne({
       where: { email, deletedAt: IsNull() },
-      select: ['id', 'email', 'password', 'firstName', 'lastName', 'userType', 'role', 'status'],
+      select: ['id', 'email', 'password', 'firstName', 'lastName', 'phoneNumber', 'userType', 'role', 'status', 'deletedAt'],
     });
   }
 

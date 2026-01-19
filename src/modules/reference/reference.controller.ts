@@ -115,7 +115,8 @@ export class ReferenceController {
   })
   @ApiResponse({ status: 404, description: 'Reference not found' })
   async findOne(@Param('id') id: string) {
-    return await this.referenceService.findOne(id);
+    const reference = await this.referenceService.findOne(id);
+    return this.referenceService.toResponseDto(reference);
   }
 
   @Get('number/:referenceNumber')
@@ -131,7 +132,8 @@ export class ReferenceController {
   })
   @ApiResponse({ status: 404, description: 'Reference not found' })
   async findByReferenceNumber(@Param('referenceNumber') referenceNumber: string) {
-    return await this.referenceService.findByReferenceNumber(referenceNumber);
+    const reference = await this.referenceService.findByReferenceNumber(referenceNumber);
+    return this.referenceService.toResponseDto(reference);
   }
 
   @Get('sp/:serviceProviderId')
