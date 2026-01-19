@@ -321,6 +321,7 @@ export class AuthService {
   /**
    * Service Provider Login
    * Login with email and password for service provider portal access
+   * SECURITY: Requires User account with password validation
    */
   async spLogin(loginDto: LoginDto): Promise<{
     accessToken: string;
@@ -338,11 +339,6 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    // NOTE: Service providers use the contact person's phone or a set password
-    // For now, we'll use email as password (TEMPORARY - should implement proper password management)
-    // TODO: Add password field to ServiceProvider entity or use contact email
-    // For demo purposes, accepting if the SP exists and is active
-
     // Verify service provider is active and approved
     if (!serviceProvider.isActive) {
       throw new UnauthorizedException('Service Provider account is not active');
@@ -356,40 +352,49 @@ export class AuthService {
       throw new UnauthorizedException('Service Provider account has been deleted');
     }
 
-    // Query for associated user by email (if exists)
-    let user = null;
-    try {
-      const userRecord = await this.userService.findByEmail(loginDto.email);
-      if (userRecord && userRecord.userType === UserType.SERVICE_PROVIDER) {
-        // Validate password if user account exists
-        const isPasswordValid = await userRecord.validatePassword(loginDto.password);
-        if (!isPasswordValid) {
-          throw new UnauthorizedException('Invalid credentials');
-        }
+    // SECURITY FIX: ALWAYS require User account for login with password validation
+    const userRecord = await this.userService.findByEmail(loginDto.email);
 
-        // Get full user details including mustChangePassword flag
-        const fullUser = await this.userService.findOne(userRecord.id);
-
-        user = {
-          id: userRecord.id,
-          firstName: userRecord.firstName,
-          lastName: userRecord.lastName,
-          email: userRecord.email,
-          phoneNumber: userRecord.phoneNumber,
-          role: userRecord.role,
-          userType: userRecord.userType,
-          status: userRecord.status,
-          mustChangePassword: fullUser.mustChangePassword,
-        };
-      }
-    } catch (error) {
-      // If error is UnauthorizedException, rethrow it
-      if (error instanceof UnauthorizedException) {
-        throw error;
-      }
-      // User doesn't exist - that's ok, continue without user object
-      this.logger.warn(`No user found for SP email: ${loginDto.email}`);
+    if (!userRecord) {
+      throw new UnauthorizedException('Invalid credentials - no user account found');
     }
+
+    if (userRecord.userType !== UserType.SERVICE_PROVIDER) {
+      throw new UnauthorizedException('Invalid credentials - not a service provider user');
+    }
+
+    // CRITICAL: Validate password
+    const isPasswordValid = await userRecord.validatePassword(loginDto.password);
+    if (!isPasswordValid) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    // Verify user account is active
+    if (userRecord.status !== UserStatus.ACTIVE) {
+      throw new UnauthorizedException('User account is not active');
+    }
+
+    if (userRecord.deletedAt) {
+      throw new UnauthorizedException('User account has been deleted');
+    }
+
+    // Get full user details including mustChangePassword flag
+    const fullUser = await this.userService.findOne(userRecord.id);
+
+    // Update last login time
+    await this.userService.updateLastLogin(userRecord.id);
+
+    const user = {
+      id: userRecord.id,
+      firstName: userRecord.firstName,
+      lastName: userRecord.lastName,
+      email: userRecord.email,
+      phoneNumber: userRecord.phoneNumber,
+      role: userRecord.role,
+      userType: userRecord.userType,
+      status: userRecord.status,
+      mustChangePassword: fullUser.mustChangePassword,
+    };
 
     // Generate SP tokens
     const tokens = await this.generateSpTokens(serviceProvider);
@@ -406,7 +411,7 @@ export class AuthService {
         status: serviceProvider.status,
         isActive: serviceProvider.isActive,
       },
-      ...(user && { user }), // Only include user if it exists
+      user,
     };
   }
 
