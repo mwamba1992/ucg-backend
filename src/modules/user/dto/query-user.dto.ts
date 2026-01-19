@@ -1,7 +1,7 @@
 import { IsOptional, IsEnum, IsString, IsInt, Min } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { UserRole, UserStatus } from '../entities/user.entity';
+import { UserRole, UserStatus, UserType } from '../entities/user.entity';
 
 export class QueryUserDto {
   @ApiProperty({ required: false, example: 'john@example.com' })
@@ -18,6 +18,11 @@ export class QueryUserDto {
   @IsOptional()
   @IsEnum(UserStatus)
   status?: UserStatus;
+
+  @ApiProperty({ enum: UserType, required: false, description: 'Filter by user type (ADMIN or SERVICE_PROVIDER)' })
+  @IsOptional()
+  @IsEnum(UserType)
+  userType?: UserType;
 
   @ApiProperty({ required: false, example: 'John' })
   @IsOptional()
