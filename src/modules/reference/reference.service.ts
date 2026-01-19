@@ -269,6 +269,7 @@ export class ReferenceService {
     const queryBuilder = this.referenceRepository
       .createQueryBuilder('ref')
       .leftJoinAndSelect('ref.serviceProvider', 'serviceProvider')
+      .leftJoinAndSelect('serviceProvider.bankAccounts', 'bankAccounts')
       .where(where);
 
     // Search functionality
@@ -313,7 +314,7 @@ export class ReferenceService {
   async findOne(id: string): Promise<PaymentReference> {
     const reference = await this.referenceRepository.findOne({
       where: { id },
-      relations: ['serviceProvider'],
+      relations: ['serviceProvider', 'serviceProvider.bankAccounts'],
     });
 
     if (!reference) {
@@ -339,7 +340,7 @@ export class ReferenceService {
 
     const reference = await this.referenceRepository.findOne({
       where,
-      relations: ['serviceProvider'],
+      relations: ['serviceProvider', 'serviceProvider.bankAccounts'],
     });
 
     return reference;
@@ -615,11 +616,29 @@ export class ReferenceService {
    * Convert entity to response DTO
    */
   toResponseDto(reference: PaymentReference): any {
+    // Get primary bank account
+    const primaryBankAccount = reference.serviceProvider?.bankAccounts?.find(
+      account => account.isPrimary && account.isActive
+    );
+
     return {
       id: reference.id,
       referenceNumber: reference.referenceNumber,
       serviceProviderId: reference.serviceProviderId,
       serviceProviderName: reference.serviceProvider?.businessName,
+      serviceProvider: reference.serviceProvider ? {
+        id: reference.serviceProvider.id,
+        spCode: reference.serviceProvider.spCode,
+        businessName: reference.serviceProvider.businessName,
+        email: reference.serviceProvider.email,
+        phoneNumber: reference.serviceProvider.phoneNumber,
+        primaryBankAccount: primaryBankAccount ? {
+          bankName: primaryBankAccount.bankName,
+          accountNumber: primaryBankAccount.accountNumber,
+          accountName: primaryBankAccount.accountName,
+          branchName: primaryBankAccount.branchName,
+        } : null,
+      } : null,
       customerName: reference.customerName,
       customerPhone: reference.customerPhone,
       customerEmail: reference.customerEmail,
@@ -841,6 +860,7 @@ export class ReferenceService {
     const queryBuilder = this.referenceRepository
       .createQueryBuilder('ref')
       .leftJoinAndSelect('ref.serviceProvider', 'sp')
+      .leftJoinAndSelect('sp.bankAccounts', 'bankAccounts')
       .where('ref.serviceProviderId = :serviceProviderId', { serviceProviderId });
 
     if (status) {
