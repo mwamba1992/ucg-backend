@@ -9,7 +9,7 @@ export class QueryUserDto {
   @IsString()
   email?: string;
 
-  @ApiProperty({ enum: UserType, required: false })
+  @ApiProperty({ enum: UserType, required: false, description: 'Filter by user type (ADMIN or SERVICE_PROVIDER)' })
   @IsOptional()
   @IsEnum(UserType)
   userType?: UserType;

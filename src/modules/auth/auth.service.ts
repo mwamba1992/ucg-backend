@@ -21,6 +21,7 @@ import { RegisterDto } from './dto/register.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
 import { JwtPayload } from './strategies/jwt.strategy';
 import { SpJwtPayload } from './strategies/sp-jwt.strategy';
+import { NotificationService } from '../notification/notification.service';
 import axios from 'axios';
 import { firstValueFrom } from 'rxjs';
 import { HttpService } from '@nestjs/axios';
@@ -36,6 +37,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly httpService: HttpService,
+    private readonly notificationService: NotificationService,
     @InjectRepository(ServiceProvider)
     private readonly serviceProviderRepository: Repository<ServiceProvider>,
     @InjectRepository(ServiceProviderContact)
@@ -322,6 +324,7 @@ export class AuthService {
    * Service Provider Login
    * Login with email and password for service provider portal access
    * SECURITY: Requires User account with password validation
+   * Supports both main SP accounts and SP staff users
    */
   async spLogin(loginDto: LoginDto): Promise<{
     accessToken: string;
@@ -329,17 +332,52 @@ export class AuthService {
     serviceProvider: any;
     user?: any;
   }> {
-    // Find service provider by email
-    const serviceProvider = await this.serviceProviderRepository.findOne({
+    // STEP 1: Find user by email first
+    const userRecord = await this.userService.findByEmail(loginDto.email);
+
+    if (!userRecord) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    if (userRecord.userType !== UserType.SERVICE_PROVIDER) {
+      throw new UnauthorizedException('Invalid credentials - not a service provider user');
+    }
+
+    // STEP 2: Validate password
+    const isPasswordValid = await userRecord.validatePassword(loginDto.password);
+    if (!isPasswordValid) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    // STEP 3: Verify user account is active
+    if (userRecord.status !== UserStatus.ACTIVE) {
+      throw new UnauthorizedException('User account is not active');
+    }
+
+    if (userRecord.deletedAt) {
+      throw new UnauthorizedException('User account has been deleted');
+    }
+
+    // STEP 4: Find associated service provider
+    // First try by email (main SP account), then by createdBy (staff user)
+    let serviceProvider = await this.serviceProviderRepository.findOne({
       where: { email: loginDto.email },
       relations: ['contact', 'bankAccounts', 'settings'],
     });
 
-    if (!serviceProvider) {
-      throw new UnauthorizedException('Invalid credentials');
+    // If not found by email, this is a staff user - find SP by createdBy
+    if (!serviceProvider && userRecord.createdBy) {
+      serviceProvider = await this.serviceProviderRepository.findOne({
+        where: { id: userRecord.createdBy },
+        relations: ['contact', 'bankAccounts', 'settings'],
+      });
     }
 
-    // Verify service provider is active and approved
+    if (!serviceProvider) {
+      throw new UnauthorizedException('No associated service provider found');
+    }
+
+    // STEP 5: Verify service provider is active and approved
     if (!serviceProvider.isActive) {
       throw new UnauthorizedException('Service Provider account is not active');
     }
@@ -350,32 +388,6 @@ export class AuthService {
 
     if (serviceProvider.deletedAt) {
       throw new UnauthorizedException('Service Provider account has been deleted');
-    }
-
-    // SECURITY FIX: ALWAYS require User account for login with password validation
-    const userRecord = await this.userService.findByEmail(loginDto.email);
-
-    if (!userRecord) {
-      throw new UnauthorizedException('Invalid credentials - no user account found');
-    }
-
-    if (userRecord.userType !== UserType.SERVICE_PROVIDER) {
-      throw new UnauthorizedException('Invalid credentials - not a service provider user');
-    }
-
-    // CRITICAL: Validate password
-    const isPasswordValid = await userRecord.validatePassword(loginDto.password);
-    if (!isPasswordValid) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
-
-    // Verify user account is active
-    if (userRecord.status !== UserStatus.ACTIVE) {
-      throw new UnauthorizedException('User account is not active');
-    }
-
-    if (userRecord.deletedAt) {
-      throw new UnauthorizedException('User account has been deleted');
     }
 
     // Get full user details including mustChangePassword flag
@@ -582,6 +594,202 @@ export class AuthService {
       .join('')
       .toUpperCase()
       .substring(0, 3);
+  }
+
+  /**
+   * Change password for Service Provider user
+   */
+  async spChangePassword(
+    email: string,
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<void> {
+    // Find the user by email (SP users have a User record created during approval)
+    const user = await this.userService.findByEmail(email);
+
+    if (!user) {
+      throw new BadRequestException('User account not found');
+    }
+
+    // Verify current password
+    const isPasswordValid = await user.validatePassword(currentPassword);
+    if (!isPasswordValid) {
+      throw new BadRequestException('Current password is incorrect');
+    }
+
+    // Change the password
+    await this.userService.changePassword(user.id, currentPassword, newPassword);
+
+    // Reset mustChangePassword flag
+    await this.userService.update(user.id, {
+      mustChangePassword: false,
+    } as any);
+
+    this.logger.log(`Password changed successfully for SP user: ${email}`);
+  }
+
+  /**
+   * Create PSP (Payment Service Provider) User
+   * Creates API-only user with generated API key
+   * PSP users cannot login to any portal, only use API
+   */
+  async createPspUser(data: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    phoneNumber: string;
+    organizationName?: string;
+  }): Promise<{
+    success: boolean;
+    message: string;
+    data: {
+      id: string;
+      email: string;
+      apiKey: string;
+      userType: string;
+      status: string;
+    };
+  }> {
+    // Check if user with email already exists
+    const existingUser = await this.userService.findByEmail(data.email);
+
+    if (existingUser) {
+      throw new ConflictException('User with this email already exists');
+    }
+
+    // Generate secure API key (64 characters: ucg_psp_ + 56 random chars)
+    const apiKey = this.generateApiKey();
+
+    // Create PSP user (no password needed - API key only)
+    const user = await this.userService.create({
+      firstName: data.firstName,
+      lastName: data.lastName,
+      email: data.email,
+      phoneNumber: data.phoneNumber,
+      userType: UserType.PSP,
+      role: UserRole.PSP_API,
+      status: UserStatus.ACTIVE, // PSP users are active immediately
+      password: Math.random().toString(36).substring(2, 15), // Random dummy password (won't be used)
+    } as any);
+
+    // Update user with API key
+    await this.userService.update(user.id, { apiKey } as any);
+
+    this.logger.log(`PSP user created: ${user.email} (ID: ${user.id})`);
+
+    // Send API key via SMS (non-blocking)
+    try {
+      const organizationName = data.organizationName || `${data.firstName} ${data.lastName}`;
+      const smsMessage = `Dear ${organizationName},\n\nYour PSP API account has been created successfully.\n\nAPI Key: ${apiKey}\n\nPlease keep this API key secure. Use it in your API requests as:\nAuthorization: Bearer ${apiKey}\n\nFor API documentation, contact UCG support.\n\nBest regards,\nUCG Team`;
+
+      await this.notificationService.sendSMS(
+        data.phoneNumber,
+        smsMessage,
+        'PSP API Key - UCG',
+      );
+
+      this.logger.log(`API key sent via SMS to ${data.phoneNumber}`);
+    } catch (error) {
+      this.logger.error(`Failed to send API key via SMS: ${error.message}`);
+      // Don't fail user creation for SMS error
+    }
+
+    return {
+      success: true,
+      message: 'PSP user created successfully. API key has been sent via SMS.',
+      data: {
+        id: user.id,
+        email: user.email,
+        apiKey, // Return API key only once during creation
+        userType: user.userType,
+        status: user.status,
+      },
+    };
+  }
+
+  /**
+   * Regenerate API key for PSP user
+   * Useful when API key is compromised or needs rotation
+   */
+  async regeneratePspApiKey(userId: string): Promise<{
+    success: boolean;
+    message: string;
+    data: {
+      apiKey: string;
+    };
+  }> {
+    const user = await this.userService.findOne(userId);
+
+    if (user.userType !== UserType.PSP) {
+      throw new BadRequestException('Only PSP users can have API keys regenerated');
+    }
+
+    // Generate new API key
+    const apiKey = this.generateApiKey();
+
+    // Update user with new API key
+    await this.userService.update(user.id, { apiKey } as any);
+
+    this.logger.log(`API key regenerated for PSP user: ${user.email} (ID: ${user.id})`);
+
+    // Send new API key via SMS (non-blocking)
+    try {
+      const userName = `${user.firstName} ${user.lastName}`;
+      const smsMessage = `Dear ${userName},\n\nYour PSP API key has been regenerated.\n\nNew API Key: ${apiKey}\n\nPlease update your systems with this new API key. The old API key is no longer valid.\n\nUse it as:\nAuthorization: Bearer ${apiKey}\n\nBest regards,\nUCG Team`;
+
+      await this.notificationService.sendSMS(
+        user.phoneNumber,
+        smsMessage,
+        'PSP API Key Regenerated - UCG',
+      );
+
+      this.logger.log(`New API key sent via SMS to ${user.phoneNumber}`);
+    } catch (error) {
+      this.logger.error(`Failed to send new API key via SMS: ${error.message}`);
+      // Don't fail regeneration for SMS error
+    }
+
+    return {
+      success: true,
+      message: 'API key regenerated successfully. New API key has been sent via SMS.',
+      data: {
+        apiKey,
+      },
+    };
+  }
+
+  /**
+   * Deactivate PSP user (soft delete / disable API access)
+   */
+  async deactivatePspUser(userId: string): Promise<{
+    success: boolean;
+    message: string;
+  }> {
+    const user = await this.userService.findOne(userId);
+
+    if (user.userType !== UserType.PSP) {
+      throw new BadRequestException('Only PSP users can be deactivated this way');
+    }
+
+    // Deactivate user
+    await this.userService.updateStatus(userId, UserStatus.INACTIVE);
+
+    this.logger.log(`PSP user deactivated: ${user.email} (ID: ${user.id})`);
+
+    return {
+      success: true,
+      message: 'PSP user deactivated successfully',
+    };
+  }
+
+  /**
+   * Generate secure API key
+   * Format: ucg_psp_{56_random_characters}
+   */
+  private generateApiKey(): string {
+    const crypto = require('crypto');
+    const randomPart = crypto.randomBytes(32).toString('hex'); // 64 hex chars
+    return `ucg_psp_${randomPart}`;
   }
 
 }

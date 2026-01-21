@@ -13,6 +13,7 @@ import * as bcrypt from 'bcrypt';
 export enum UserType {
   ADMIN = 'ADMIN',
   SERVICE_PROVIDER = 'SERVICE_PROVIDER',
+  PSP = 'PSP', // Payment Service Provider (API-only access)
 }
 
 export enum UserRole {
@@ -31,6 +32,9 @@ export enum UserRole {
   SP_FINANCE = 'SP_FINANCE',
   SP_OPERATOR = 'SP_OPERATOR',
   SP_VIEWER = 'SP_VIEWER',
+
+  // Payment Service Provider (PSP) Roles - API Only
+  PSP_API = 'PSP_API', // API access for payment processing
 
   // Legacy roles (deprecated - keeping for backward compatibility)
   MANAGER = 'MANAGER',
@@ -104,6 +108,10 @@ export class User {
 
   @Column({ type: 'timestamp', nullable: true })
   resetPasswordExpires: Date;
+
+  @Column({ type: 'text', nullable: true, unique: true })
+  @Index()
+  apiKey: string; // For PSP (Payment Service Provider) API authentication
 
   @CreateDateColumn()
   createdAt: Date;

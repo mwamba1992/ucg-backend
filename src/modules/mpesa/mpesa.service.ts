@@ -285,6 +285,9 @@ export class MpesaService {
 
       // Check if reference is valid (not expired, not cancelled)
       if (!reference.isValid()) {
+        if (reference.isExpired()) {
+          return { valid: false, reason: 'Reference expired' };
+        }
         return { valid: false, reason: `Reference ${reference.status}` };
       }
 

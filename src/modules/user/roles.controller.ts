@@ -197,6 +197,19 @@ export class RolesController {
       ],
     },
 
+    // PSP (Payment Service Provider) Roles - API Only
+    [UserRole.PSP_API]: {
+      value: UserRole.PSP_API,
+      label: 'PSP API',
+      description: 'API-only access for third-party payment service providers (no portal login)',
+      userType: UserType.PSP,
+      permissions: [
+        'api:payments:create',
+        'api:references:read',
+        'api:payments:read',
+      ],
+    },
+
     // Legacy Roles (Deprecated)
     [UserRole.MANAGER]: {
       value: UserRole.MANAGER,
@@ -353,6 +366,11 @@ export class RolesController {
           value: UserType.SERVICE_PROVIDER,
           label: 'Service Provider User',
           description: 'Users from service provider organizations',
+        },
+        {
+          value: UserType.PSP,
+          label: 'Payment Service Provider (API Only)',
+          description: 'API-only users for third-party payment integrations',
         },
       ],
     };

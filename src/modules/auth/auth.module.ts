@@ -6,6 +6,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
+import { PspManagementController } from './psp-management.controller';
 import { UserModule } from '../user/user.module';
 import { User } from '../user/entities/user.entity';
 import { ServiceProvider } from '../service-provider/entities/service-provider.entity';
@@ -14,9 +15,11 @@ import { ServiceProviderBankAccount } from '../service-provider/entities/service
 import { ServiceProviderSettings } from '../service-provider/entities/service-provider-settings.entity';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { SpJwtStrategy } from './strategies/sp-jwt.strategy';
+import { PspApiStrategy } from './strategies/psp-api.strategy';
 import { LocalStrategy } from './strategies/local.strategy';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { SpJwtAuthGuard } from './guards/sp-jwt-auth.guard';
+import { PspApiAuthGuard } from './guards/psp-api-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { NotificationModule } from '../notification/notification.module';
 
@@ -42,8 +45,8 @@ import { NotificationModule } from '../notification/notification.module';
       }),
     }),
   ],
-  controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, SpJwtStrategy, LocalStrategy, JwtAuthGuard, SpJwtAuthGuard, RolesGuard],
-  exports: [AuthService, JwtAuthGuard, SpJwtAuthGuard, RolesGuard],
+  controllers: [AuthController, PspManagementController],
+  providers: [AuthService, JwtStrategy, SpJwtStrategy, PspApiStrategy, LocalStrategy, JwtAuthGuard, SpJwtAuthGuard, PspApiAuthGuard, RolesGuard],
+  exports: [AuthService, JwtAuthGuard, SpJwtAuthGuard, PspApiAuthGuard, RolesGuard],
 })
 export class AuthModule {}
