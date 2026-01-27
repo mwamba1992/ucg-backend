@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { HttpService } from '@nestjs/axios';
@@ -27,11 +27,14 @@ import { PaymentService } from '../payment/payment.service';
 import { CBSService } from '../cbs/cbs.service';
 import { TransferType } from '../cbs/entities/cbs-transfer.entity';
 import { PaymentStatus } from '../payment/entities/payment.entity';
+import { ApefPaymentService } from '../apef/apef-payment.service';
+import { ApefChannel } from '../apef/entities/apef-payment.entity';
 
 @Injectable()
 export class MpesaService {
   private readonly logger = new Logger(MpesaService.name);
   private readonly mpesaCallbackUrl: string;
+  private readonly APEF_PREFIX = '90';
 
   constructor(
     @InjectRepository(MpesaTransaction)
@@ -44,8 +47,17 @@ export class MpesaService {
     private readonly referenceService: ReferenceService,
     private readonly paymentService: PaymentService,
     private readonly cbsService: CBSService,
+    @Inject(forwardRef(() => ApefPaymentService))
+    private readonly apefPaymentService: ApefPaymentService,
   ) {
     this.mpesaCallbackUrl = this.configService.get<string>('MPESA_CALLBACK_URL');
+  }
+
+  /**
+   * Check if reference is APEF (starts with 90)
+   */
+  private isApefReference(reference: string): boolean {
+    return reference?.startsWith(this.APEF_PREFIX);
   }
 
   /**
@@ -375,7 +387,13 @@ export class MpesaService {
     this.logger.log(`Processing M-Pesa payment: ${message.mpesaReceipt}`);
 
     try {
-      // 1. Validate reference and amount
+      // Check if this is an APEF reference (starts with 90)
+      if (this.isApefReference(message.referenceNumber)) {
+        this.logger.log(`Reference ${message.referenceNumber} is APEF - routing to APEF flow`);
+        return await this.processApefPayment(message);
+      }
+
+      // 1. Validate reference and amount (Internal flow)
       const validation = await this.validateReference(
         message.referenceNumber,
         message.amount,
@@ -445,6 +463,73 @@ export class MpesaService {
         `Error processing M-Pesa payment ${message.mpesaReceipt}: ${error.message}`,
         error.stack,
       );
+
+      await this.updateTransactionStatus(
+        message.mpesaReceipt,
+        MpesaTransactionStatus.FAILED,
+        null,
+        null,
+        error.message,
+      );
+
+      return {
+        success: false,
+        mpesaReceipt: message.mpesaReceipt,
+        error: error.message,
+      };
+    }
+  }
+
+  /**
+   * Process APEF payment (for references starting with 90)
+   */
+  private async processApefPayment(
+    message: MpesaPaymentMessage,
+  ): Promise<MpesaPaymentProcessingResponse> {
+    this.logger.log(`Processing APEF payment via M-Pesa: ${message.mpesaReceipt}`);
+
+    try {
+      const apefResult = await this.apefPaymentService.processPayment({
+        reference: message.referenceNumber,
+        amount: message.amount,
+        externalTxnId: message.mpesaReceipt,
+        channel: ApefChannel.VODA,
+        payerName: message.customerName || message.customerPhone,
+        payerPhone: message.customerPhone,
+        rawPayload: message as any,
+      });
+
+      if (apefResult.success) {
+        // Update M-Pesa transaction status
+        await this.updateTransactionStatus(
+          message.mpesaReceipt,
+          MpesaTransactionStatus.COMPLETED,
+          apefResult.paymentId,
+          null,
+        );
+
+        return {
+          success: true,
+          mpesaReceipt: message.mpesaReceipt,
+          paymentId: apefResult.paymentId,
+        };
+      } else {
+        await this.updateTransactionStatus(
+          message.mpesaReceipt,
+          MpesaTransactionStatus.FAILED,
+          null,
+          null,
+          apefResult.errorDescription,
+        );
+
+        return {
+          success: false,
+          mpesaReceipt: message.mpesaReceipt,
+          error: apefResult.errorDescription,
+        };
+      }
+    } catch (error) {
+      this.logger.error(`APEF payment failed via M-Pesa: ${error.message}`, error.stack);
 
       await this.updateTransactionStatus(
         message.mpesaReceipt,

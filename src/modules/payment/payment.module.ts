@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { PaymentController } from './payment.controller';
 import { SpPaymentController } from './sp-payment.controller';
@@ -12,6 +12,7 @@ import { PaymentConsumer } from './payment.consumer';
 import { NotificationModule } from '../notification/notification.module';
 import { CBSModule } from '../cbs/cbs.module';
 import { FinancialServiceProvider } from '../financial-service-provider/entities/financial-service-provider.entity';
+import { ApefModule } from '../apef/apef.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { FinancialServiceProvider } from '../financial-service-provider/entities
     ReferenceModule, // Make ReferenceService available here
     NotificationModule,
     CBSModule, // Import CBS module for fund transfers
+    forwardRef(() => ApefModule), // APEF integration for 90 prefix references
   ],
   controllers: [PaymentController, SpPaymentController, PspPaymentController, PaymentConsumer],
   providers: [PaymentService, PaymentProducer],

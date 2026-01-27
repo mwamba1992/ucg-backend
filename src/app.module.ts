@@ -18,6 +18,7 @@ import { CBSModule } from './modules/cbs/cbs.module';
 import { MpesaModule } from './modules/mpesa/mpesa.module';
 import { TigoPesaModule } from './modules/tigopesa/tigopesa.module';
 import { FinancialServiceProviderModule } from './modules/financial-service-provider/financial-service-provider.module';
+import { ApefModule } from './modules/apef/apef.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import { RolesGuard } from './modules/auth/guards/roles.guard';
 
@@ -52,6 +53,7 @@ import { RolesGuard } from './modules/auth/guards/roles.guard';
     CBSModule, // CBS integration for fund transfers
     MpesaModule, // M-Pesa C2B payment integration
     TigoPesaModule, // TigoPesa W2A payment integration
+    ApefModule, // APEF (External/APEX) payment integration
   ],
   controllers: [AppController],
   providers: [

@@ -11,11 +11,14 @@ import { NotificationService } from '../notification/notification.service';
 import { CBSService } from '../cbs/cbs.service';
 import { TransferType } from '../cbs/entities/cbs-transfer.entity';
 import { FinancialServiceProvider } from '../financial-service-provider/entities/financial-service-provider.entity';
+import { ApefPaymentService } from '../apef/apef-payment.service';
+import { ApefChannel } from '../apef/entities/apef-payment.entity';
 import * as crypto from 'crypto';
 
 @Injectable()
 export class PaymentService {
   private readonly logger = new Logger(PaymentService.name);
+  private readonly APEF_PREFIX = '90';
 
   constructor(
     @InjectRepository(Payment)
@@ -29,12 +32,90 @@ export class PaymentService {
     private readonly paymentProducer: PaymentProducer,
     private readonly notificationService: NotificationService,
     private readonly cbsService: CBSService,
+    @Inject(forwardRef(() => ApefPaymentService))
+    private readonly apefPaymentService: ApefPaymentService,
   ) {}
+
+  /**
+   * Check if a reference is an APEF reference (starts with 90)
+   */
+  private isApefReference(reference: string): boolean {
+    return reference?.startsWith(this.APEF_PREFIX);
+  }
+
+  /**
+   * Map payment channel to APEF channel
+   */
+  private mapToApefChannel(paymentChannel: string): ApefChannel {
+    const channelMap: Record<string, ApefChannel> = {
+      'MPESA': ApefChannel.VODA,
+      'M-PESA': ApefChannel.VODA,
+      'VODACOM': ApefChannel.VODA,
+      'TIGO': ApefChannel.TIGO,
+      'TIGOPESA': ApefChannel.TIGO,
+      'MIXX': ApefChannel.TIGO,
+      'BANK': ApefChannel.BANK,
+      'Bank': ApefChannel.BANK,
+    };
+    return channelMap[paymentChannel?.toUpperCase()] || ApefChannel.NORMAL;
+  }
+
+  /**
+   * Process APEF payment via ApefPaymentService
+   */
+  private async processApefPayment(dto: CreatePaymentDto): Promise<Payment> {
+    this.logger.log(`Routing payment to APEF flow: reference=${dto.referenceNumber}`);
+
+    const apefResult = await this.apefPaymentService.processPayment({
+      reference: dto.referenceNumber,
+      amount: dto.amountPaid,
+      currency: dto.currency || 'TZS',
+      channel: this.mapToApefChannel(dto.paymentChannel),
+      externalTxnId: dto.transactionId || crypto.randomUUID(),
+      payerName: dto.payerName,
+      payerPhone: dto.payerPhone,
+      rawPayload: dto as any,
+    });
+
+    if (!apefResult.success) {
+      throw new BadRequestException(
+        apefResult.errorDescription || 'APEF payment processing failed',
+      );
+    }
+
+    // Create a synthetic Payment object to return for API compatibility
+    const payment = this.paymentRepo.create({
+      referenceNumber: dto.referenceNumber,
+      amountPaid: dto.amountPaid,
+      payerName: dto.payerName,
+      payerPhone: dto.payerPhone,
+      paymentChannel: dto.paymentChannel,
+      fspCode: dto.fspCode,
+      currency: dto.currency || 'TZS',
+      status: apefResult.status === 'COMPLETED' ? PaymentStatus.SUCCESS : PaymentStatus.PENDING,
+    });
+
+    // Note: We don't save this to the normal Payment table as APEF has its own tables
+    // But we set the id from APEF for tracking
+    payment.id = apefResult.paymentId;
+    payment.paidAt = new Date();
+
+    this.logger.log(`APEF payment processed: paymentId=${apefResult.paymentId}, status=${apefResult.status}`);
+
+    return payment;
+  }
 
   /**
    * Process payment with payment option validation
    */
   async createPayment(dto: CreatePaymentDto): Promise<Payment> {
+    // Check if this is an APEF reference (starts with 90)
+    if (this.isApefReference(dto.referenceNumber)) {
+      this.logger.log(`Reference ${dto.referenceNumber} is APEF - routing to APEF flow`);
+      return await this.processApefPayment(dto);
+    }
+
+    // Normal (non-APEF) payment flow
     const reference = await this.referenceService.findByReferenceNumber(dto.referenceNumber);
 
     if (!reference) {

@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { HttpModule } from '@nestjs/axios';
@@ -13,6 +13,7 @@ import { RABBITMQ_QUEUES } from '../../config/rabbitmq.config';
 import { PaymentModule } from '../payment/payment.module';
 import { ReferenceModule } from '../reference/reference.module';
 import { CBSModule } from '../cbs/cbs.module';
+import { ApefModule } from '../apef/apef.module';
 
 @Module({
   imports: [
@@ -77,6 +78,7 @@ import { CBSModule } from '../cbs/cbs.module';
     PaymentModule,
     ReferenceModule,
     CBSModule,
+    forwardRef(() => ApefModule), // APEF integration for 90 prefix references
   ],
   controllers: [
     MpesaController, // HTTP REST endpoints

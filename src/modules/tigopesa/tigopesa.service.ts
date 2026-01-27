@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
@@ -23,10 +23,13 @@ import { ReferenceService } from '../reference/reference.service';
 import { PaymentService } from '../payment/payment.service';
 import { CBSService } from '../cbs/cbs.service';
 import { TransferType } from '../cbs/entities/cbs-transfer.entity';
+import { ApefPaymentService } from '../apef/apef-payment.service';
+import { ApefChannel } from '../apef/entities/apef-payment.entity';
 
 @Injectable()
 export class TigoPesaService {
   private readonly logger = new Logger(TigoPesaService.name);
+  private readonly APEF_PREFIX = '90';
 
   constructor(
     @InjectRepository(TigoPesaTransaction)
@@ -37,7 +40,16 @@ export class TigoPesaService {
     private readonly referenceService: ReferenceService,
     private readonly paymentService: PaymentService,
     private readonly cbsService: CBSService,
+    @Inject(forwardRef(() => ApefPaymentService))
+    private readonly apefPaymentService: ApefPaymentService,
   ) {}
+
+  /**
+   * Check if reference is APEF (starts with 90)
+   */
+  private isApefReference(reference: string): boolean {
+    return reference?.startsWith(this.APEF_PREFIX);
+  }
 
   /**
    * Parse TigoPesa XML notification to DTO
@@ -245,7 +257,13 @@ export class TigoPesaService {
     this.logger.log(`Processing TigoPesa payment: ${message.txnId}`);
 
     try {
-      // 1. Validate reference and amount
+      // Check if this is an APEF reference (starts with 90)
+      if (this.isApefReference(message.customerReferenceId)) {
+        this.logger.log(`Reference ${message.customerReferenceId} is APEF - routing to APEF flow`);
+        return await this.processApefPayment(message);
+      }
+
+      // 1. Validate reference and amount (Internal flow)
       const validation = await this.validateReference(
         message.customerReferenceId,
         message.amount,
@@ -325,6 +343,84 @@ export class TigoPesaService {
         `Error processing TigoPesa payment ${message.txnId}: ${error.message}`,
         error.stack,
       );
+
+      await this.updateTransactionStatus(
+        message.txnId,
+        TigoPesaTransactionStatus.FAILED,
+        null,
+        null,
+        null,
+        TigoPesaErrorCode.GENERAL_ERROR,
+        error.message,
+      );
+
+      return {
+        success: false,
+        txnId: message.txnId,
+        errorCode: TigoPesaErrorCode.GENERAL_ERROR,
+        errorDescription: error.message,
+      };
+    }
+  }
+
+  /**
+   * Process APEF payment (for references starting with 90)
+   */
+  private async processApefPayment(
+    message: TigoPesaPaymentMessage,
+  ): Promise<TigoPesaPaymentProcessingResponse> {
+    this.logger.log(`Processing APEF payment via TigoPesa: ${message.txnId}`);
+
+    try {
+      const apefResult = await this.apefPaymentService.processPayment({
+        reference: message.customerReferenceId,
+        amount: message.amount,
+        externalTxnId: message.txnId,
+        channel: ApefChannel.TIGO,
+        payerName: message.senderName || message.msisdn,
+        payerPhone: message.msisdn,
+        rawPayload: message as any,
+      });
+
+      if (apefResult.success) {
+        // Update TigoPesa transaction status
+        const refId = this.generateRefId();
+        await this.updateTransactionStatus(
+          message.txnId,
+          TigoPesaTransactionStatus.COMPLETED,
+          refId,
+          apefResult.paymentId,
+          null,
+          TigoPesaErrorCode.SUCCESS,
+        );
+
+        return {
+          success: true,
+          txnId: message.txnId,
+          refId,
+          paymentId: apefResult.paymentId,
+          errorCode: TigoPesaErrorCode.SUCCESS,
+        };
+      } else {
+        await this.updateTransactionStatus(
+          message.txnId,
+          TigoPesaTransactionStatus.FAILED,
+          null,
+          null,
+          null,
+          apefResult.errorCode || TigoPesaErrorCode.GENERAL_ERROR,
+          apefResult.errorDescription,
+        );
+
+        return {
+          success: false,
+          txnId: message.txnId,
+          errorCode: apefResult.errorCode || TigoPesaErrorCode.GENERAL_ERROR,
+          errorDescription: apefResult.errorDescription,
+        };
+      }
+    } catch (error) {
+      this.logger.error(`APEF payment failed via TigoPesa: ${error.message}`, error.stack);
 
       await this.updateTransactionStatus(
         message.txnId,

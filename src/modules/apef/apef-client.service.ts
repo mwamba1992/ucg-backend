@@ -1,0 +1,214 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { HttpService } from '@nestjs/axios';
+import { ConfigService } from '@nestjs/config';
+import { firstValueFrom } from 'rxjs';
+import {
+  ApefValidateAccountResponseDto,
+  ApefDepositNotificationRequestDto,
+  ApefDepositNotificationResponseDto,
+} from './dto/apef.dto';
+
+interface CachedToken {
+  token: string;
+  bankCode: string;
+  bankName: string;
+  expiresAt: number; // Timestamp in milliseconds
+}
+
+@Injectable()
+export class ApefClientService {
+  private readonly logger = new Logger(ApefClientService.name);
+  private readonly apefBaseUrl: string;
+  private readonly clientId: string;
+  private readonly clientSecret: string;
+
+  // Token cache
+  private cachedToken: CachedToken | null = null;
+  private readonly TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000; // 5 minutes buffer before expiry
+
+  constructor(
+    private readonly httpService: HttpService,
+    private readonly configService: ConfigService,
+  ) {
+    this.apefBaseUrl = this.configService.get<string>('APEF_API_URL', 'https://uatapi.apef.co.tz');
+    this.clientId = this.configService.get<string>('APEF_CLIENT_ID');
+    this.clientSecret = this.configService.get<string>('APEF_CLIENT_SECRET');
+  }
+
+  /**
+   * Get APEF authentication token (with caching)
+   */
+  async getToken(): Promise<{ token: string; bankCode: string; bankName: string }> {
+    // Check if cached token is still valid
+    if (this.cachedToken && Date.now() < this.cachedToken.expiresAt) {
+      this.logger.debug('Using cached APEF token');
+      return {
+        token: this.cachedToken.token,
+        bankCode: this.cachedToken.bankCode,
+        bankName: this.cachedToken.bankName,
+      };
+    }
+
+    this.logger.log('Fetching new APEF token');
+
+    try {
+      const response = await firstValueFrom(
+        this.httpService.post(
+          `${this.apefBaseUrl}/api/banks/login`,
+          {
+            clientId: this.clientId,
+            clientSecret: this.clientSecret,
+          },
+          {
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          },
+        ),
+      );
+
+      const { token, bankCode, bankName } = response.data;
+
+      // Cache token with 55 minute expiry (assuming 1 hour token validity)
+      this.cachedToken = {
+        token,
+        bankCode,
+        bankName,
+        expiresAt: Date.now() + (55 * 60 * 1000), // 55 minutes
+      };
+
+      this.logger.log(`APEF token obtained successfully. Bank: ${bankName} (${bankCode})`);
+
+      return { token, bankCode, bankName };
+    } catch (error) {
+      this.logger.error(`Failed to obtain APEF token: ${error.message}`);
+      if (error.response) {
+        this.logger.error(`APEF login error response: ${JSON.stringify(error.response.data)}`);
+      }
+      throw new Error(`APEF authentication failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Validate APEF reference/account number
+   */
+  async validateAccount(apefAccountNumber: string): Promise<ApefValidateAccountResponseDto> {
+    this.logger.log(`Validating APEF account: ${apefAccountNumber}`);
+
+    try {
+      const { token } = await this.getToken();
+
+      const response = await firstValueFrom(
+        this.httpService.post(
+          `${this.apefBaseUrl}/api/banks/validate-account`,
+          {
+            apefAccountNumber,
+          },
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`,
+            },
+          },
+        ),
+      );
+
+      this.logger.log(`APEF validation response: ${JSON.stringify(response.data)}`);
+
+      // Parse response - adjust based on actual APEF API response structure
+      const data = response.data;
+
+      return {
+        success: true,
+        customerName: data.customerName || data.accountName || data.name,
+        amount: data.amount || data.billAmount,
+        currency: data.currency || 'TZS',
+        billDescription: data.billDescription || data.description,
+        rawResponse: data,
+      };
+    } catch (error) {
+      this.logger.error(`APEF validation failed for ${apefAccountNumber}: ${error.message}`);
+      if (error.response) {
+        this.logger.error(`APEF validation error response: ${JSON.stringify(error.response.data)}`);
+      }
+
+      return {
+        success: false,
+        errorMessage: error.response?.data?.message || error.message,
+        rawResponse: error.response?.data,
+      };
+    }
+  }
+
+  /**
+   * Send deposit notification to APEF
+   */
+  async sendDepositNotification(
+    request: ApefDepositNotificationRequestDto,
+  ): Promise<ApefDepositNotificationResponseDto> {
+    this.logger.log(
+      `Sending APEF deposit notification for reference: ${request.apefAccountNumber}, ` +
+      `txn: ${request.transactionReference}, amount: ${request.amount}`,
+    );
+
+    try {
+      const { token } = await this.getToken();
+
+      const response = await firstValueFrom(
+        this.httpService.post(
+          `${this.apefBaseUrl}/api/banks/transactions/deposit`,
+          request,
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`,
+            },
+          },
+        ),
+      );
+
+      this.logger.log(`APEF deposit notification response: ${JSON.stringify(response.data)}`);
+
+      return {
+        success: true,
+        message: response.data.message || 'Deposit notification sent successfully',
+        rawResponse: response.data,
+      };
+    } catch (error) {
+      this.logger.error(
+        `APEF deposit notification failed for ${request.apefAccountNumber}: ${error.message}`,
+      );
+      if (error.response) {
+        this.logger.error(`APEF deposit error response: ${JSON.stringify(error.response.data)}`);
+      }
+
+      return {
+        success: false,
+        errorMessage: error.response?.data?.message || error.message,
+        rawResponse: error.response?.data,
+      };
+    }
+  }
+
+  /**
+   * Get bank code from cached token
+   */
+  getBankCode(): string | null {
+    return this.cachedToken?.bankCode || null;
+  }
+
+  /**
+   * Get bank name from cached token
+   */
+  getBankName(): string | null {
+    return this.cachedToken?.bankName || null;
+  }
+
+  /**
+   * Clear cached token (useful for testing or forced refresh)
+   */
+  clearTokenCache(): void {
+    this.cachedToken = null;
+    this.logger.log('APEF token cache cleared');
+  }
+}
