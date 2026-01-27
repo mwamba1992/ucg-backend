@@ -517,4 +517,107 @@ export class ApefPaymentService {
       successRate: total > 0 ? ((completed / total) * 100).toFixed(2) : 0,
     };
   }
+
+  /**
+   * List all APEF payments with pagination and filters
+   */
+  async listPayments(options: {
+    page?: number;
+    limit?: number;
+    status?: ApefPaymentStatus;
+    channel?: ApefChannel;
+    startDate?: Date;
+    endDate?: Date;
+  }): Promise<{ data: ApefPayment[]; total: number; page: number; limit: number; totalPages: number }> {
+    const page = options.page || 1;
+    const limit = options.limit || 20;
+    const skip = (page - 1) * limit;
+
+    const queryBuilder = this.apefPaymentRepo
+      .createQueryBuilder('payment')
+      .leftJoinAndSelect('payment.apefReference', 'reference')
+      .orderBy('payment.createdAt', 'DESC');
+
+    if (options.status) {
+      queryBuilder.andWhere('payment.status = :status', { status: options.status });
+    }
+
+    if (options.channel) {
+      queryBuilder.andWhere('payment.channel = :channel', { channel: options.channel });
+    }
+
+    if (options.startDate) {
+      queryBuilder.andWhere('payment.createdAt >= :startDate', { startDate: options.startDate });
+    }
+
+    if (options.endDate) {
+      queryBuilder.andWhere('payment.createdAt <= :endDate', { endDate: options.endDate });
+    }
+
+    const [data, total] = await queryBuilder
+      .skip(skip)
+      .take(limit)
+      .getManyAndCount();
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  /**
+   * List all APEF references with pagination and filters
+   */
+  async listReferences(options: {
+    page?: number;
+    limit?: number;
+    status?: ApefReferenceStatus;
+    startDate?: Date;
+    endDate?: Date;
+  }): Promise<{ data: ApefReference[]; total: number; page: number; limit: number; totalPages: number }> {
+    const page = options.page || 1;
+    const limit = options.limit || 20;
+    const skip = (page - 1) * limit;
+
+    const queryBuilder = this.apefReferenceRepo
+      .createQueryBuilder('reference')
+      .orderBy('reference.createdAt', 'DESC');
+
+    if (options.status) {
+      queryBuilder.andWhere('reference.status = :status', { status: options.status });
+    }
+
+    if (options.startDate) {
+      queryBuilder.andWhere('reference.createdAt >= :startDate', { startDate: options.startDate });
+    }
+
+    if (options.endDate) {
+      queryBuilder.andWhere('reference.createdAt <= :endDate', { endDate: options.endDate });
+    }
+
+    const [data, total] = await queryBuilder
+      .skip(skip)
+      .take(limit)
+      .getManyAndCount();
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  /**
+   * Get a single APEF reference by reference number
+   */
+  async getReference(referenceNumber: string): Promise<ApefReference> {
+    return this.apefReferenceRepo.findOne({
+      where: { referenceNumber },
+    });
+  }
 }

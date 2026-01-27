@@ -4,12 +4,15 @@ import {
   Get,
   Body,
   Param,
+  Query,
   Logger,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
 import { ApefPaymentService } from './apef-payment.service';
 import { ApefPaymentRequestDto } from './dto/apef.dto';
+import { ApefPaymentStatus, ApefChannel } from './entities/apef-payment.entity';
+import { ApefReferenceStatus } from './entities/apef-reference.entity';
 import { Public } from '../auth/decorators/public.decorator';
 
 @Controller('apef')
@@ -39,6 +42,76 @@ export class ApefController {
   }
 
   /**
+   * List all APEF payments with pagination and filters
+   * GET /apef/payments/list
+   */
+  @Public()
+  @Get('payments/list')
+  async listPayments(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('status') status?: ApefPaymentStatus,
+    @Query('channel') channel?: ApefChannel,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    const result = await this.apefPaymentService.listPayments({
+      page: page ? parseInt(page, 10) : 1,
+      limit: limit ? parseInt(limit, 10) : 20,
+      status,
+      channel,
+      startDate: startDate ? new Date(startDate) : undefined,
+      endDate: endDate ? new Date(endDate) : undefined,
+    });
+
+    return {
+      success: true,
+      ...result,
+    };
+  }
+
+  /**
+   * List all APEF references with pagination and filters
+   * GET /apef/references/list
+   */
+  @Public()
+  @Get('references/list')
+  async listReferences(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('status') status?: ApefReferenceStatus,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    const result = await this.apefPaymentService.listReferences({
+      page: page ? parseInt(page, 10) : 1,
+      limit: limit ? parseInt(limit, 10) : 20,
+      status,
+      startDate: startDate ? new Date(startDate) : undefined,
+      endDate: endDate ? new Date(endDate) : undefined,
+    });
+
+    return {
+      success: true,
+      ...result,
+    };
+  }
+
+  /**
+   * Get single APEF reference by reference number
+   * GET /apef/references/:referenceNumber
+   */
+  @Public()
+  @Get('references/:referenceNumber')
+  async getReference(@Param('referenceNumber') referenceNumber: string) {
+    const reference = await this.apefPaymentService.getReference(referenceNumber);
+    if (!reference) {
+      return { success: false, message: 'Reference not found' };
+    }
+    return { success: true, reference };
+  }
+
+  /**
    * Check if reference is APEF type
    * GET /apef/reference/check/:reference
    */
@@ -60,6 +133,7 @@ export class ApefController {
    * Get payment by ID
    * GET /apef/payments/:id
    */
+  @Public()
   @Get('payments/:id')
   async getPayment(@Param('id') id: string) {
     const payment = await this.apefPaymentService.getPayment(id);
@@ -73,6 +147,7 @@ export class ApefController {
    * Get payments by reference number
    * GET /apef/payments/reference/:referenceNumber
    */
+  @Public()
   @Get('payments/reference/:referenceNumber')
   async getPaymentsByReference(@Param('referenceNumber') referenceNumber: string) {
     const payments = await this.apefPaymentService.getPaymentsByReference(referenceNumber);
@@ -88,6 +163,7 @@ export class ApefController {
    * Get APEF payment statistics
    * GET /apef/statistics
    */
+  @Public()
   @Get('statistics')
   async getStatistics() {
     return this.apefPaymentService.getStatistics();
