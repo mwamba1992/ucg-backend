@@ -21,6 +21,7 @@ import { ApefController } from './apef.controller';
 import { CBSModule } from '../cbs/cbs.module';
 import { PaymentModule } from '../payment/payment.module';
 import { FinancialServiceProvider } from '../financial-service-provider/entities/financial-service-provider.entity';
+import { ServiceProvider } from '../service-provider/entities/service-provider.entity';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { FinancialServiceProvider } from '../financial-service-provider/entities
       ApefReference,
       ApefPayment,
       FinancialServiceProvider,
+      ServiceProvider,
     ]),
     HttpModule.register({
       timeout: 30000, // 30 seconds timeout for APEF API calls

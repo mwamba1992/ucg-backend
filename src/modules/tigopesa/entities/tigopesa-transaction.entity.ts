@@ -61,8 +61,8 @@ export class TigoPesaTransaction {
   })
   status: TigoPesaTransactionStatus;
 
-  @Column({ type: 'varchar', length: 20, nullable: true })
-  resultCode: string; // error000, error001, etc.
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  resultCode: string; // error000, error001, APEF error codes, etc.
 
   @Column({ type: 'text', nullable: true })
   errorDescription: string;

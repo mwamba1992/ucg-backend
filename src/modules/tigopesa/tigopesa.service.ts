@@ -384,12 +384,14 @@ export class TigoPesaService {
 
       if (apefResult.success) {
         // Update TigoPesa transaction status
+        // Note: For APEF payments, paymentId is null because APEF uses its own ApefPayment entity
+        // The apefResult.paymentId is an ApefPayment ID, not a Payment ID
         const refId = this.generateRefId();
         await this.updateTransactionStatus(
           message.txnId,
           TigoPesaTransactionStatus.COMPLETED,
           refId,
-          apefResult.paymentId,
+          null, // APEF payments don't link to Payment entity
           null,
           TigoPesaErrorCode.SUCCESS,
         );

@@ -15,6 +15,7 @@ import {
   ApefDepositNotificationRequestDto,
 } from './dto/apef.dto';
 import { FinancialServiceProvider } from '../financial-service-provider/entities/financial-service-provider.entity';
+import { ServiceProvider } from '../service-provider/entities/service-provider.entity';
 
 @Injectable()
 export class ApefPaymentService {
@@ -28,6 +29,8 @@ export class ApefPaymentService {
     private readonly apefPaymentRepo: Repository<ApefPayment>,
     @InjectRepository(FinancialServiceProvider)
     private readonly fspRepo: Repository<FinancialServiceProvider>,
+    @InjectRepository(ServiceProvider)
+    private readonly serviceProviderRepo: Repository<ServiceProvider>,
     private readonly apefClientService: ApefClientService,
     private readonly cbsService: CBSService,
     private readonly configService: ConfigService,
@@ -286,13 +289,35 @@ export class ApefPaymentService {
       };
     }
 
-    // For APEF, the reference (apefAccountNumber) is used as the credit account
-    // This is per user's specification
-    const creditAccount = reference.referenceNumber; // APEF account number
+    // Query service provider with spCode 'APE' to get the credit account (bank account)
+    const apefServiceProvider = await this.serviceProviderRepo.findOne({
+      where: { spCode: 'APE' },
+      relations: ['bankAccounts'],
+    });
+
+    if (!apefServiceProvider) {
+      return {
+        success: false,
+        error: `Service provider with spCode 'APE' not found`,
+      };
+    }
+
+    // Get primary active bank account, or first active bank account
+    const bankAccounts = apefServiceProvider.bankAccounts?.filter(acc => acc.isActive) || [];
+    const primaryBankAccount = bankAccounts.find(acc => acc.isPrimary) || bankAccounts[0];
+
+    if (!primaryBankAccount) {
+      return {
+        success: false,
+        error: `No active bank account found for APEF service provider`,
+      };
+    }
+
+    const creditAccount = primaryBankAccount.accountNumber;
 
     this.logger.log(
       `Executing CBS transfer: amount=${payment.paidAmount}, ` +
-      `from=${fsp.glAccountNumber} (${fsp.name}), to=${creditAccount} (APEF Account)`,
+      `from=${fsp.glAccountNumber} (${fsp.name}), to=${creditAccount} (APEF SP Bank Account)`,
     );
 
     const transferResult = await this.cbsService.executeTransfer(
