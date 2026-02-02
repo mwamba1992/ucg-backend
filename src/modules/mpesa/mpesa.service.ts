@@ -34,7 +34,7 @@ import { ApefChannel } from '../apef/entities/apef-payment.entity';
 export class MpesaService {
   private readonly logger = new Logger(MpesaService.name);
   private readonly mpesaCallbackUrl: string;
-  private readonly APEF_PREFIX = '90';
+  private readonly APEF_PREFIXES = ['001', '002'];
 
   constructor(
     @InjectRepository(MpesaTransaction)
@@ -54,10 +54,10 @@ export class MpesaService {
   }
 
   /**
-   * Check if reference is APEF (starts with 90)
+   * Check if reference is APEF (starts with 001 or 002)
    */
   private isApefReference(reference: string): boolean {
-    return reference?.startsWith(this.APEF_PREFIX);
+    return this.APEF_PREFIXES.some(prefix => reference?.startsWith(prefix));
   }
 
   /**
@@ -387,7 +387,7 @@ export class MpesaService {
     this.logger.log(`Processing M-Pesa payment: ${message.mpesaReceipt}`);
 
     try {
-      // Check if this is an APEF reference (starts with 90)
+      // Check if this is an APEF reference (starts with 001 or 002)
       if (this.isApefReference(message.referenceNumber)) {
         this.logger.log(`Reference ${message.referenceNumber} is APEF - routing to APEF flow`);
         return await this.processApefPayment(message);

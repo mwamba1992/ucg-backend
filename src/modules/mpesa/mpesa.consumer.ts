@@ -203,16 +203,40 @@ export class MpesaConsumer {
 
   /**
    * Helper: Check if error is a validation error (don't retry)
+   * These are business logic errors that won't succeed on retry
    */
   private isValidationError(error: string): boolean {
     const validationErrors = [
+      // Reference validation errors
       'Invalid reference',
       'Reference not found',
       'Reference expired',
       'Reference already used',
       'Reference USED',
+      'Reference already fully paid',
+      // Amount validation errors
       'Amount mismatch',
       'Invalid amount',
+      // Payment option validation errors
+      'COMPLETE option',
+      'PARTIAL option',
+      'PRECISE option',
+      'LIMITED option',
+      'Unknown payment option',
+      'allows only one payment',
+      'requires payment',
+      'requires final payment',
+      // CBS transfer validation errors (business logic - don't retry)
+      'Invalid Account',
+      'Account not found',
+      'Account closed',
+      'Account blocked',
+      'Account dormant',
+      'Insufficient funds',
+      'Transfer failed',
+      'CBS transfer error',
+      'CBS transfer failed',
+      'Only 6200 is success',
     ];
 
     return validationErrors.some((e) =>
@@ -221,16 +245,18 @@ export class MpesaConsumer {
   }
 
   /**
-   * Helper: Check if error is retryable
+   * Helper: Check if error is retryable (only transient/network errors)
    */
   private isRetryableError(error: any): boolean {
     const retryableErrors = [
       'ECONNREFUSED',
       'ETIMEDOUT',
       'ENOTFOUND',
+      'ECONNRESET',
       'Network error',
       'timeout',
-      'CBS',
+      'socket hang up',
+      'connection reset',
     ];
 
     return retryableErrors.some((e) =>

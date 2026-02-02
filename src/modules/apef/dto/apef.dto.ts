@@ -71,8 +71,8 @@ export class ApefValidateAccountResponseDto {
 export class ApefDepositNotificationRequestDto {
   transactionReference: string; // Our unique transaction ID
   apefAccountNumber: string;    // APEF reference
-  bankAccountName: string;
-  bankAccountNumber: string;
+  bankAccountName: string | null;
+  bankAccountNumber: string | null;
   amount: number;
   currency: string;
   paymentMethod: string;
