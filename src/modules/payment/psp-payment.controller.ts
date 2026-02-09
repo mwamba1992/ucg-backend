@@ -200,11 +200,8 @@ export class PspPaymentController {
           success: true,
           data: {
             referenceNumber,
-            customerName: apefResult.customerName,
-            amount: apefResult.amount,
-            currency: apefResult.currency,
-            description: apefResult.billDescription,
             source: 'APEF',
+            ...apefResult.rawResponse,
           },
         };
       }
