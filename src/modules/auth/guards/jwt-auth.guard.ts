@@ -36,6 +36,12 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       return true; // Allow the route-specific SpJwtAuthGuard to handle auth
     }
 
+    // Skip this guard for PSP routes - PspApiAuthGuard will handle them
+    // PSP routes use API key authentication, not JWT
+    if (path.includes('/psp/')) {
+      return true; // Allow the route-specific PspApiAuthGuard to handle auth
+    }
+
     return super.canActivate(context);
   }
 }

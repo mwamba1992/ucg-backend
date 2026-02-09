@@ -50,6 +50,7 @@ export class PspManagementController {
           apiKey: 'ucg_psp_1234567890abcdef...',
           userType: 'PSP',
           status: 'ACTIVE',
+          allowedFspCodes: ['VODACOM', 'TIGO'],
         },
       },
     },
@@ -65,6 +66,7 @@ export class PspManagementController {
       email: string;
       phoneNumber: string;
       organizationName?: string;
+      allowedFspCodes?: string[]; // Optional: restrict to specific FSPs (null = all allowed)
     },
   ) {
     return await this.authService.createPspUser(data);
@@ -96,6 +98,37 @@ export class PspManagementController {
   @ApiResponse({ status: 404, description: 'PSP user not found' })
   async regenerateApiKey(@Param('userId') userId: string) {
     return await this.authService.regeneratePspApiKey(userId);
+  }
+
+  /**
+   * Update allowed FSP codes for PSP user
+   * Admin only
+   */
+  @Put(':userId/allowed-fsps')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Update allowed FSP codes for PSP user (Admin only)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Allowed FSP codes updated successfully',
+    schema: {
+      example: {
+        success: true,
+        message: 'Allowed FSP codes updated successfully',
+        data: {
+          allowedFspCodes: ['VODACOM', 'TIGO'],
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Admin access required' })
+  @ApiResponse({ status: 404, description: 'PSP user not found' })
+  async updateAllowedFspCodes(
+    @Param('userId') userId: string,
+    @Body() data: { allowedFspCodes: string[] | null }, // null = all FSPs allowed
+  ) {
+    return await this.authService.updatePspAllowedFspCodes(userId, data.allowedFspCodes);
   }
 
   /**

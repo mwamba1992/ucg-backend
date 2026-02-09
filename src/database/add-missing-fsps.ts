@@ -1,0 +1,76 @@
+import { DataSource } from 'typeorm';
+import { config } from 'dotenv';
+import { FinancialServiceProvider, FspType, FspStatus } from '../modules/financial-service-provider/entities/financial-service-provider.entity';
+
+config();
+
+const dataSource = new DataSource({
+  type: 'postgres',
+  host: process.env.DB_HOST || 'localhost',
+  port: parseInt(process.env.DB_PORT, 10) || 5432,
+  username: process.env.DB_USERNAME || 'postgres',
+  password: process.env.DB_PASSWORD || 'UCG4321',
+  database: process.env.DB_DATABASE || 'ucg_db',
+  entities: [__dirname + '/../**/*.entity{.ts,.js}'],
+  synchronize: false,
+  logging: true,
+});
+
+const allFsps = [
+  // MNOs
+  { fspCode: 'VODACOM', numericCode: 'FSP001', name: 'Vodacom Tanzania PLC', shortName: 'Vodacom', type: FspType.MNO, status: FspStatus.ACTIVE, phoneNumber: '+255752000000', email: 'support@vodacom.co.tz', website: 'https://www.vodacom.co.tz', mnoCode: 'VDC', ussdCode: '*150*00#', apiBaseUrl: 'https://api.vodacom.co.tz', glAccountNumber: '10100-VODACOM-001', glAccountName: 'Vodacom M-Pesa Collections', glSettlementAccount: '10100-VODACOM-STL', glCommissionAccount: '40100-VODACOM-COM', transactionFeePercentage: 1.5, transactionFeeFixed: 500, settlementPeriodDays: 1, description: 'Vodacom M-Pesa Mobile Money Service', logoUrl: 'https://example.com/logos/vodacom.png' },
+  { fspCode: 'TIGO', numericCode: 'FSP002', name: 'Tigo Tanzania', shortName: 'Tigo', type: FspType.MNO, status: FspStatus.ACTIVE, phoneNumber: '+255655000000', email: 'support@tigo.co.tz', website: 'https://www.tigo.co.tz', mnoCode: 'TIG', ussdCode: '*150*01#', apiBaseUrl: 'https://api.tigo.co.tz', glAccountNumber: '10100-TIGO-001', glAccountName: 'TigoPesa Collections', glSettlementAccount: '10100-TIGO-STL', glCommissionAccount: '40100-TIGO-COM', transactionFeePercentage: 1.5, transactionFeeFixed: 500, settlementPeriodDays: 1, description: 'TigoPesa Mobile Money Service', logoUrl: 'https://example.com/logos/tigo.png' },
+  { fspCode: 'AIRTEL', numericCode: 'FSP003', name: 'Airtel Tanzania Limited', shortName: 'Airtel', type: FspType.MNO, status: FspStatus.ACTIVE, phoneNumber: '+255754000000', email: 'support@airtel.co.tz', website: 'https://www.airtel.co.tz', mnoCode: 'ART', ussdCode: '*150*60#', apiBaseUrl: 'https://api.airtel.co.tz', glAccountNumber: '10100-AIRTEL-001', glAccountName: 'Airtel Money Collections', glSettlementAccount: '10100-AIRTEL-STL', glCommissionAccount: '40100-AIRTEL-COM', transactionFeePercentage: 1.5, transactionFeeFixed: 500, settlementPeriodDays: 1, description: 'Airtel Money Mobile Money Service', logoUrl: 'https://example.com/logos/airtel.png' },
+  { fspCode: 'HALOTEL', numericCode: 'FSP004', name: 'Halotel Tanzania Limited', shortName: 'Halotel', type: FspType.MNO, status: FspStatus.ACTIVE, phoneNumber: '+255621000000', email: 'support@halotel.co.tz', website: 'https://www.halotel.co.tz', mnoCode: 'HAL', ussdCode: '*150*88#', apiBaseUrl: 'https://api.halotel.co.tz', glAccountNumber: '10100-HALOTEL-001', glAccountName: 'HaloPesa Collections', glSettlementAccount: '10100-HALOTEL-STL', glCommissionAccount: '40100-HALOTEL-COM', transactionFeePercentage: 1.5, transactionFeeFixed: 500, settlementPeriodDays: 1, description: 'HaloPesa Mobile Money Service', logoUrl: 'https://example.com/logos/halotel.png' },
+  { fspCode: 'ZANTEL', numericCode: 'FSP005', name: 'Zanzibar Telecom Limited', shortName: 'Zantel', type: FspType.MNO, status: FspStatus.ACTIVE, phoneNumber: '+255778000000', email: 'support@zantel.co.tz', website: 'https://www.zantel.co.tz', mnoCode: 'ZAN', ussdCode: '*150*02#', apiBaseUrl: 'https://api.zantel.co.tz', glAccountNumber: '10100-ZANTEL-001', glAccountName: 'EzyPesa Collections', glSettlementAccount: '10100-ZANTEL-STL', glCommissionAccount: '40100-ZANTEL-COM', transactionFeePercentage: 1.5, transactionFeeFixed: 500, settlementPeriodDays: 1, description: 'EzyPesa Mobile Money Service', logoUrl: 'https://example.com/logos/zantel.png' },
+  // Banks
+  { fspCode: 'CRDB', numericCode: 'FSP006', name: 'CRDB Bank PLC', shortName: 'CRDB', type: FspType.BANK, status: FspStatus.ACTIVE, phoneNumber: '+255222117442', email: 'info@crdbbank.co.tz', website: 'https://www.crdbbank.co.tz', swiftCode: 'CORUTZTZ', bankCode: '01', apiBaseUrl: 'https://api.crdbbank.co.tz', glAccountNumber: '20100-CRDB-001', glAccountName: 'CRDB Bank Collections', glSettlementAccount: '20100-CRDB-STL', glCommissionAccount: '40200-CRDB-COM', transactionFeePercentage: 0.5, transactionFeeFixed: 1000, settlementPeriodDays: 2, description: 'CRDB Bank Payment Gateway', logoUrl: 'https://example.com/logos/crdb.png' },
+  { fspCode: 'NMB', numericCode: 'FSP007', name: 'National Microfinance Bank PLC', shortName: 'NMB', type: FspType.BANK, status: FspStatus.ACTIVE, phoneNumber: '+255222260498', email: 'info@nmbbank.co.tz', website: 'https://www.nmbbank.co.tz', swiftCode: 'NLIBTZTZ', bankCode: '02', apiBaseUrl: 'https://api.nmbbank.co.tz', glAccountNumber: '20100-NMB-001', glAccountName: 'NMB Bank Collections', glSettlementAccount: '20100-NMB-STL', glCommissionAccount: '40200-NMB-COM', transactionFeePercentage: 0.5, transactionFeeFixed: 1000, settlementPeriodDays: 2, description: 'NMB Bank Payment Gateway', logoUrl: 'https://example.com/logos/nmb.png' },
+  { fspCode: 'NBC', numericCode: 'FSP008', name: 'National Bank of Commerce Limited', shortName: 'NBC', type: FspType.BANK, status: FspStatus.ACTIVE, phoneNumber: '+255222231208', email: 'info@nbc.co.tz', website: 'https://www.nbc.co.tz', swiftCode: 'NLCBTZTZ', bankCode: '03', apiBaseUrl: 'https://api.nbc.co.tz', glAccountNumber: '20100-NBC-001', glAccountName: 'NBC Bank Collections', glSettlementAccount: '20100-NBC-STL', glCommissionAccount: '40200-NBC-COM', transactionFeePercentage: 0.5, transactionFeeFixed: 1000, settlementPeriodDays: 2, description: 'NBC Bank Payment Gateway', logoUrl: 'https://example.com/logos/nbc.png' },
+  { fspCode: 'STANBIC', numericCode: 'FSP009', name: 'Stanbic Bank Tanzania Limited', shortName: 'Stanbic', type: FspType.BANK, status: FspStatus.ACTIVE, phoneNumber: '+255222165100', email: 'info@stanbic.co.tz', website: 'https://www.stanbic.co.tz', swiftCode: 'SBICTZTZ', bankCode: '04', apiBaseUrl: 'https://api.stanbic.co.tz', glAccountNumber: '20100-STANBIC-001', glAccountName: 'Stanbic Bank Collections', glSettlementAccount: '20100-STANBIC-STL', glCommissionAccount: '40200-STANBIC-COM', transactionFeePercentage: 0.5, transactionFeeFixed: 1000, settlementPeriodDays: 2, description: 'Stanbic Bank Payment Gateway', logoUrl: 'https://example.com/logos/stanbic.png' },
+  { fspCode: 'EQUITY', numericCode: 'FSP010', name: 'Equity Bank Tanzania Limited', shortName: 'Equity', type: FspType.BANK, status: FspStatus.ACTIVE, phoneNumber: '+255222921000', email: 'info@equitybank.co.tz', website: 'https://www.equitybank.co.tz', swiftCode: 'EQBLTZTZ', bankCode: '05', apiBaseUrl: 'https://api.equitybank.co.tz', glAccountNumber: '20100-EQUITY-001', glAccountName: 'Equity Bank Collections', glSettlementAccount: '20100-EQUITY-STL', glCommissionAccount: '40200-EQUITY-COM', transactionFeePercentage: 0.5, transactionFeeFixed: 1000, settlementPeriodDays: 2, description: 'Equity Bank Payment Gateway', logoUrl: 'https://example.com/logos/equity.png' },
+  { fspCode: 'DTB', numericCode: 'FSP011', name: 'Diamond Trust Bank Tanzania Limited', shortName: 'DTB', type: FspType.BANK, status: FspStatus.ACTIVE, phoneNumber: '+255222117416', email: 'info@dtbafrica.com', website: 'https://www.dtbafrica.com/tanzania', swiftCode: 'DTKETZTZ', bankCode: '06', apiBaseUrl: 'https://api.dtbafrica.com', glAccountNumber: '20100-DTB-001', glAccountName: 'DTB Collections', glSettlementAccount: '20100-DTB-STL', glCommissionAccount: '40200-DTB-COM', transactionFeePercentage: 0.5, transactionFeeFixed: 1000, settlementPeriodDays: 2, description: 'DTB Payment Gateway', logoUrl: 'https://example.com/logos/dtb.png' },
+  { fspCode: 'STANDARD_CHARTERED', numericCode: 'FSP012', name: 'Standard Chartered Bank Tanzania Limited', shortName: 'Standard Chartered', type: FspType.BANK, status: FspStatus.ACTIVE, phoneNumber: '+255222137200', email: 'info@sc.com', website: 'https://www.sc.com/tz', swiftCode: 'SCBLTZTZ', bankCode: '07', apiBaseUrl: 'https://api.sc.com/tz', glAccountNumber: '20100-SC-001', glAccountName: 'Standard Chartered Collections', glSettlementAccount: '20100-SC-STL', glCommissionAccount: '40200-SC-COM', transactionFeePercentage: 0.5, transactionFeeFixed: 1000, settlementPeriodDays: 2, description: 'Standard Chartered Bank Payment Gateway', logoUrl: 'https://example.com/logos/sc.png' },
+  { fspCode: 'TPB', numericCode: 'FSP013', name: 'Tanzania Postal Bank', shortName: 'TPB', type: FspType.BANK, status: FspStatus.ACTIVE, phoneNumber: '+255222134080', email: 'info@tpb.co.tz', website: 'https://www.tpb.co.tz', swiftCode: 'TPBSTZTZ', bankCode: '08', apiBaseUrl: 'https://api.tpb.co.tz', glAccountNumber: '20100-TPB-001', glAccountName: 'TPB Collections', glSettlementAccount: '20100-TPB-STL', glCommissionAccount: '40200-TPB-COM', transactionFeePercentage: 0.5, transactionFeeFixed: 1000, settlementPeriodDays: 2, description: 'Tanzania Postal Bank Payment Gateway', logoUrl: 'https://example.com/logos/tpb.png' },
+  { fspCode: 'EXIM', numericCode: 'FSP014', name: 'Exim Bank Tanzania Limited', shortName: 'Exim', type: FspType.BANK, status: FspStatus.ACTIVE, phoneNumber: '+255222123150', email: 'info@eximbank-tz.com', website: 'https://www.eximbank-tz.com', swiftCode: 'EXTNTZTZ', bankCode: '09', apiBaseUrl: 'https://api.eximbank-tz.com', glAccountNumber: '20100-EXIM-001', glAccountName: 'Exim Bank Collections', glSettlementAccount: '20100-EXIM-STL', glCommissionAccount: '40200-EXIM-COM', transactionFeePercentage: 0.5, transactionFeeFixed: 1000, settlementPeriodDays: 2, description: 'Exim Bank Payment Gateway', logoUrl: 'https://example.com/logos/exim.png' },
+  { fspCode: 'AMANA', numericCode: 'FSP015', name: 'Amana Bank Limited', shortName: 'Amana', type: FspType.BANK, status: FspStatus.ACTIVE, phoneNumber: '+255222134000', email: 'info@amanabank.co.tz', website: 'https://www.amanabank.co.tz', swiftCode: 'AMANTZTZ', bankCode: '10', apiBaseUrl: 'https://api.amanabank.co.tz', glAccountNumber: '20100-AMANA-001', glAccountName: 'Amana Bank Collections', glSettlementAccount: '20100-AMANA-STL', glCommissionAccount: '40200-AMANA-COM', transactionFeePercentage: 0.5, transactionFeeFixed: 1000, settlementPeriodDays: 2, description: 'Amana Bank Payment Gateway', logoUrl: 'https://example.com/logos/amana.png' },
+  { fspCode: 'MHB', numericCode: 'FSP016', name: 'Mwanga Hakika Bank', shortName: 'MHB', type: FspType.BANK, status: FspStatus.ACTIVE, phoneNumber: '+255222000000', email: 'info@mhb.co.tz', website: 'https://www.mhb.co.tz', swiftCode: 'MHBKTZTZ', bankCode: '11', apiBaseUrl: 'https://api.mhb.co.tz', glAccountNumber: '20100-MHB-001', glAccountName: 'MHB Collections', glSettlementAccount: '20100-MHB-STL', glCommissionAccount: '40200-MHB-COM', transactionFeePercentage: 0.5, transactionFeeFixed: 1000, settlementPeriodDays: 2, description: 'Mwanga Hakika Bank Payment Gateway', logoUrl: 'https://example.com/logos/mhb.png' },
+  // Special
+  { fspCode: 'BANK', numericCode: 'FSP099', name: 'Generic Bank Payment', shortName: 'Bank', type: FspType.BANK, status: FspStatus.ACTIVE, description: 'Generic bank payment when specific bank is unknown', glAccountNumber: '20100-GENERIC-001', glAccountName: 'Generic Bank Collections', transactionFeePercentage: 0.5, transactionFeeFixed: 1000, settlementPeriodDays: 2 },
+  { fspCode: 'CASH', numericCode: 'FSP098', name: 'Cash Payment', shortName: 'Cash', type: FspType.BANK, status: FspStatus.ACTIVE, description: 'Cash payment at counter', glAccountNumber: '10000-CASH-001', glAccountName: 'Cash Collections', transactionFeePercentage: 0, transactionFeeFixed: 0, settlementPeriodDays: 0 },
+  { fspCode: 'UNKNOWN', numericCode: 'FSP000', name: 'Unknown Payment Source', shortName: 'Unknown', type: FspType.BANK, status: FspStatus.INACTIVE, description: 'Unknown payment source - for data migration purposes', glAccountNumber: '20999-UNKNOWN-001', glAccountName: 'Unknown Source Collections', transactionFeePercentage: 0, transactionFeeFixed: 0, settlementPeriodDays: 0 },
+];
+
+async function addMissingFsps() {
+  try {
+    await dataSource.initialize();
+    console.log('Database connected');
+
+    const fspRepository = dataSource.getRepository(FinancialServiceProvider);
+
+    let added = 0;
+    let skipped = 0;
+
+    for (const fspData of allFsps) {
+      const exists = await fspRepository.findOne({ where: { fspCode: fspData.fspCode } });
+      if (exists) {
+        console.log(`  ⏭ Skipping ${fspData.fspCode} - already exists`);
+        skipped++;
+      } else {
+        const fsp = fspRepository.create(fspData);
+        await fspRepository.save(fsp);
+        console.log(`  ✓ Added ${fspData.fspCode} - ${fspData.name}`);
+        added++;
+      }
+    }
+
+    console.log(`\nDone! Added: ${added}, Skipped: ${skipped}`);
+    await dataSource.destroy();
+    process.exit(0);
+  } catch (error) {
+    console.error('Failed:', error);
+    process.exit(1);
+  }
+}
+
+addMissingFsps();

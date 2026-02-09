@@ -1,5 +1,5 @@
 // payment.service.ts
-import { Injectable, BadRequestException, Logger, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, BadRequestException, ForbiddenException, Logger, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Payment, PaymentStatus } from './entities/payment.entity';
@@ -13,6 +13,7 @@ import { TransferType } from '../cbs/entities/cbs-transfer.entity';
 import { FinancialServiceProvider } from '../financial-service-provider/entities/financial-service-provider.entity';
 import { ApefPaymentService } from '../apef/apef-payment.service';
 import { ApefChannel } from '../apef/entities/apef-payment.entity';
+import { User } from '../user/entities/user.entity';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -106,10 +107,42 @@ export class PaymentService {
   }
 
   /**
+   * Validate PSP user is authorized to use the specified FSP
+   */
+  private validatePspFspAuthorization(pspUser: User | null, fspCode: string): void {
+    if (!pspUser) {
+      // No PSP user context (e.g., internal call) - skip validation
+      return;
+    }
+
+    // If allowedFspCodes is null or empty, all FSPs are allowed
+    if (!pspUser.allowedFspCodes || pspUser.allowedFspCodes.length === 0) {
+      return;
+    }
+
+    // Check if the fspCode is in the allowed list
+    if (!pspUser.allowedFspCodes.includes(fspCode)) {
+      this.logger.warn(
+        `PSP user ${pspUser.email} attempted to use unauthorized FSP: ${fspCode}. ` +
+        `Allowed FSPs: ${pspUser.allowedFspCodes.join(', ')}`,
+      );
+      throw new ForbiddenException(
+        `PSP user is not authorized to process payments via ${fspCode}. ` +
+        `Allowed FSPs: ${pspUser.allowedFspCodes.join(', ')}`,
+      );
+    }
+  }
+
+  /**
    * Process payment with payment option validation
    * CBS transfer is executed FIRST - payment is only saved if CBS succeeds
+   * @param dto - Payment data
+   * @param pspUser - Optional PSP user for FSP authorization validation
    */
-  async createPayment(dto: CreatePaymentDto): Promise<Payment> {
+  async createPayment(dto: CreatePaymentDto, pspUser?: User): Promise<Payment> {
+    // Validate PSP user is authorized to use this FSP
+    this.validatePspFspAuthorization(pspUser, dto.fspCode);
+
     // Check if this is an APEF reference (starts with 001 or 002)
     if (this.isApefReference(dto.referenceNumber)) {
       this.logger.log(`Reference ${dto.referenceNumber} is APEF - routing to APEF flow`);

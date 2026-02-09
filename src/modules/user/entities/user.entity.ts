@@ -113,6 +113,9 @@ export class User {
   @Index()
   apiKey: string; // For PSP (Payment Service Provider) API authentication
 
+  @Column({ type: 'simple-array', nullable: true })
+  allowedFspCodes: string[]; // Allowed FSP codes for PSP users (null = all FSPs allowed)
+
   @CreateDateColumn()
   createdAt: Date;
 

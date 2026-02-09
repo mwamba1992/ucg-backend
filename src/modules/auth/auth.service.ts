@@ -639,6 +639,7 @@ export class AuthService {
     email: string;
     phoneNumber: string;
     organizationName?: string;
+    allowedFspCodes?: string[]; // Optional: restrict to specific FSPs (null = all allowed)
   }): Promise<{
     success: boolean;
     message: string;
@@ -648,6 +649,7 @@ export class AuthService {
       apiKey: string;
       userType: string;
       status: string;
+      allowedFspCodes: string[] | null;
     };
   }> {
     // Check if user with email already exists
@@ -672,10 +674,13 @@ export class AuthService {
       password: Math.random().toString(36).substring(2, 15), // Random dummy password (won't be used)
     } as any);
 
-    // Update user with API key
-    await this.userService.update(user.id, { apiKey } as any);
+    // Update user with API key and allowed FSP codes
+    await this.userService.update(user.id, {
+      apiKey,
+      allowedFspCodes: data.allowedFspCodes || null,
+    } as any);
 
-    this.logger.log(`PSP user created: ${user.email} (ID: ${user.id})`);
+    this.logger.log(`PSP user created: ${user.email} (ID: ${user.id}), allowedFspCodes: ${data.allowedFspCodes?.join(', ') || 'ALL'}`);
 
     // Send API key via SMS (non-blocking)
     try {
@@ -703,6 +708,7 @@ export class AuthService {
         apiKey, // Return API key only once during creation
         userType: user.userType,
         status: user.status,
+        allowedFspCodes: data.allowedFspCodes || null,
       },
     };
   }
@@ -754,6 +760,44 @@ export class AuthService {
       message: 'API key regenerated successfully. New API key has been sent via SMS.',
       data: {
         apiKey,
+      },
+    };
+  }
+
+  /**
+   * Update allowed FSP codes for PSP user
+   * Set to null to allow all FSPs
+   */
+  async updatePspAllowedFspCodes(
+    userId: string,
+    allowedFspCodes: string[] | null,
+  ): Promise<{
+    success: boolean;
+    message: string;
+    data: {
+      allowedFspCodes: string[] | null;
+    };
+  }> {
+    const user = await this.userService.findOne(userId);
+
+    if (user.userType !== UserType.PSP) {
+      throw new BadRequestException('Only PSP users can have allowed FSP codes updated');
+    }
+
+    // Update allowed FSP codes
+    await this.userService.update(user.id, { allowedFspCodes } as any);
+
+    this.logger.log(
+      `Allowed FSP codes updated for PSP user: ${user.email} (ID: ${user.id}), allowedFspCodes: ${allowedFspCodes?.join(', ') || 'ALL'}`,
+    );
+
+    return {
+      success: true,
+      message: allowedFspCodes
+        ? `Allowed FSP codes updated to: ${allowedFspCodes.join(', ')}`
+        : 'All FSP codes are now allowed',
+      data: {
+        allowedFspCodes,
       },
     };
   }

@@ -84,9 +84,15 @@ export class PspPaymentController {
     status: 401,
     description: 'Unauthorized - Invalid or missing API key',
   })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - PSP user not authorized to use this FSP',
+  })
   async createPayment(@Body() createPaymentDto: CreatePaymentDto, @Req() request: any) {
     try {
-      const payment = await this.paymentService.createPayment(createPaymentDto);
+      // Pass PSP user for FSP authorization validation
+      const pspUser = request.user;
+      const payment = await this.paymentService.createPayment(createPaymentDto, pspUser);
 
       return {
         success: true,
