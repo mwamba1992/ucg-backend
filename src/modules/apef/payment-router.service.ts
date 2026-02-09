@@ -29,7 +29,7 @@ export interface UnifiedPaymentResponse {
 @Injectable()
 export class PaymentRouterService {
   private readonly logger = new Logger(PaymentRouterService.name);
-  private readonly APEF_PREFIX = '90';
+  private readonly APEF_PREFIXES = ['001', '002'];
 
   constructor(
     private readonly apefPaymentService: ApefPaymentService,
@@ -40,8 +40,8 @@ export class PaymentRouterService {
    * Route payment to correct flow based on reference prefix
    *
    * Core Principle (Non-Negotiable):
-   * - References starting with '90' → APEF (External/APEX)
-   * - References NOT starting with '90' → Internal Billing
+   * - References starting with '001' or '002' → APEF (External/APEX)
+   * - References NOT starting with '001' or '002' → Internal Billing
    *
    * No fallback. No cross-calling. No mixing.
    */
@@ -51,7 +51,7 @@ export class PaymentRouterService {
     // Log classification decision (mandatory per spec)
     const isApef = this.isApefReference(reference);
     this.logger.log(
-      `Payment classification: reference=${reference}, prefix=${reference?.substring(0, 2)}, ` +
+      `Payment classification: reference=${reference}, prefix=${reference?.substring(0, 3)}, ` +
       `flow=${isApef ? 'APEF' : 'INTERNAL'}`,
     );
 
@@ -63,10 +63,10 @@ export class PaymentRouterService {
   }
 
   /**
-   * Check if reference is APEF (starts with 90)
+   * Check if reference is APEF (starts with 001 or 002)
    */
   isApefReference(reference: string): boolean {
-    return reference?.startsWith(this.APEF_PREFIX);
+    return this.APEF_PREFIXES.some(prefix => reference?.startsWith(prefix));
   }
 
   /**

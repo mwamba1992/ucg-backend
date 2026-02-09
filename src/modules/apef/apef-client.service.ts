@@ -67,7 +67,14 @@ export class ApefClientService {
         ),
       );
 
+      this.logger.debug(`APEF login response: ${JSON.stringify(response.data)}`);
+
       const { token, bankCode, bankName } = response.data;
+
+      if (!token) {
+        this.logger.error('APEF login response did not contain a token');
+        throw new Error('APEF login response missing token');
+      }
 
       // Cache token with 55 minute expiry (assuming 1 hour token validity)
       this.cachedToken = {
@@ -77,7 +84,7 @@ export class ApefClientService {
         expiresAt: Date.now() + (55 * 60 * 1000), // 55 minutes
       };
 
-      this.logger.log(`APEF token obtained successfully. Bank: ${bankName} (${bankCode})`);
+      this.logger.log(`APEF token obtained successfully. Bank: ${bankName} (${bankCode}), Token length: ${token.length}`);
 
       return { token, bankCode, bankName };
     } catch (error) {
@@ -92,11 +99,13 @@ export class ApefClientService {
   /**
    * Validate APEF reference/account number
    */
-  async validateAccount(apefAccountNumber: string): Promise<ApefValidateAccountResponseDto> {
+  async validateAccount(apefAccountNumber: string, retryOnAuthFailure = true): Promise<ApefValidateAccountResponseDto> {
     this.logger.log(`Validating APEF account: ${apefAccountNumber}`);
 
     try {
       const { token } = await this.getToken();
+
+      this.logger.log(`APEF validation using token: ${token}`);
 
       const response = await firstValueFrom(
         this.httpService.post(
@@ -132,6 +141,13 @@ export class ApefClientService {
         this.logger.error(`APEF validation error response: ${JSON.stringify(error.response.data)}`);
       }
 
+      // If 401 error and we haven't retried yet, clear cache and retry with fresh token
+      if (error.response?.status === 401 && retryOnAuthFailure) {
+        this.logger.warn('APEF token invalid, clearing cache and retrying with fresh token');
+        this.clearTokenCache();
+        return this.validateAccount(apefAccountNumber, false);
+      }
+
       return {
         success: false,
         errorMessage: error.response?.data?.message || error.message,
@@ -145,6 +161,7 @@ export class ApefClientService {
    */
   async sendDepositNotification(
     request: ApefDepositNotificationRequestDto,
+    retryOnAuthFailure = true,
   ): Promise<ApefDepositNotificationResponseDto> {
     this.logger.log(
       `Sending APEF deposit notification for reference: ${request.apefAccountNumber}, ` +
@@ -153,6 +170,9 @@ export class ApefClientService {
 
     try {
       const { token } = await this.getToken();
+
+      this.logger.log(`APEF deposit using token: ${token}`);
+      this.logger.log(`APEF deposit payload: ${JSON.stringify(request)}`);
 
       const response = await firstValueFrom(
         this.httpService.post(
@@ -180,6 +200,13 @@ export class ApefClientService {
       );
       if (error.response) {
         this.logger.error(`APEF deposit error response: ${JSON.stringify(error.response.data)}`);
+      }
+
+      // If 401 error and we haven't retried yet, clear cache and retry with fresh token
+      if (error.response?.status === 401 && retryOnAuthFailure) {
+        this.logger.warn('APEF token invalid, clearing cache and retrying with fresh token');
+        this.clearTokenCache();
+        return this.sendDepositNotification(request, false);
       }
 
       return {

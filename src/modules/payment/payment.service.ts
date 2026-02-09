@@ -18,7 +18,7 @@ import * as crypto from 'crypto';
 @Injectable()
 export class PaymentService {
   private readonly logger = new Logger(PaymentService.name);
-  private readonly APEF_PREFIX = '90';
+  private readonly APEF_PREFIXES = ['001', '002'];
 
   constructor(
     @InjectRepository(Payment)
@@ -37,10 +37,10 @@ export class PaymentService {
   ) {}
 
   /**
-   * Check if a reference is an APEF reference (starts with 90)
+   * Check if a reference is an APEF reference (starts with 001 or 002)
    */
   private isApefReference(reference: string): boolean {
-    return reference?.startsWith(this.APEF_PREFIX);
+    return this.APEF_PREFIXES.some(prefix => reference?.startsWith(prefix));
   }
 
   /**
@@ -107,9 +107,10 @@ export class PaymentService {
 
   /**
    * Process payment with payment option validation
+   * CBS transfer is executed FIRST - payment is only saved if CBS succeeds
    */
   async createPayment(dto: CreatePaymentDto): Promise<Payment> {
-    // Check if this is an APEF reference (starts with 90)
+    // Check if this is an APEF reference (starts with 001 or 002)
     if (this.isApefReference(dto.referenceNumber)) {
       this.logger.log(`Reference ${dto.referenceNumber} is APEF - routing to APEF flow`);
       return await this.processApefPayment(dto);
@@ -147,6 +148,7 @@ export class PaymentService {
     // Check if CBS transfer is enabled and validate FSP/GL account BEFORE creating payment
     const cbsTransferEnabled = process.env.CBS_TRANSFER_ENABLED === 'true';
     let fsp: FinancialServiceProvider = null;
+    let primaryBankAccount = null;
 
     if (cbsTransferEnabled) {
       const serviceProvider = reference.serviceProvider;
@@ -159,7 +161,7 @@ export class PaymentService {
       }
 
       // Get primary bank account for service provider
-      const primaryBankAccount = serviceProvider.bankAccounts?.find(
+      primaryBankAccount = serviceProvider.bankAccounts?.find(
         (account) => account.isPrimary && account.isActive,
       );
 
@@ -185,9 +187,32 @@ export class PaymentService {
           `FSP ${fsp.name} (${fsp.fspCode}) has no GL account configured - cannot process payment`,
         );
       }
+
+      // Execute CBS transfer FIRST - before saving payment
+      // This ensures we only save payment if GL transfer succeeds
+      const transferResult = await this.executeCBSTransferBeforePayment(
+        dto,
+        reference,
+        fsp,
+        primaryBankAccount,
+      );
+
+      if (!transferResult.success) {
+        // CBS transfer failed - don't save payment or update reference
+        this.logger.error(
+          `CBS transfer failed - payment not saved: ${transferResult.error}`,
+        );
+        throw new BadRequestException(
+          `Payment processing failed: CBS transfer error - ${transferResult.error}`,
+        );
+      }
+
+      this.logger.log(
+        `CBS transfer successful - now saving payment and updating reference`,
+      );
     }
 
-    // Create payment record
+    // CBS transfer succeeded (or CBS disabled) - now save payment and update reference
     const payment = this.paymentRepo.create({
       ...dto,
       status: PaymentStatus.SUCCESS,
@@ -199,38 +224,9 @@ export class PaymentService {
     await this.updateReferenceWithPayment(reference, dto.amountPaid, savedPayment.id);
 
     this.logger.log(
-      `Payment processed: ${dto.amountPaid} for reference ${dto.referenceNumber}. ` +
+      `Payment saved: ${dto.amountPaid} for reference ${dto.referenceNumber}. ` +
       `Total paid: ${Number(reference.totalPaid) + Number(dto.amountPaid)}/${reference.amount}`,
     );
-
-    // Execute CBS transfer to settle funds - MUST succeed if CBS is enabled
-    if (cbsTransferEnabled) {
-      const transferResult = await this.executeCBSTransferRequired(savedPayment, reference, fsp);
-
-      if (!transferResult.success) {
-        // CBS transfer failed - rollback payment and reference updates
-        this.logger.error(
-          `CBS transfer failed - rolling back payment ${savedPayment.id}: ${transferResult.error}`,
-        );
-
-        // Delete payment record
-        await this.paymentRepo.remove(savedPayment);
-
-        // Rollback reference updates
-        reference.totalPaid = Number(reference.totalPaid) - Number(dto.amountPaid);
-        reference.installmentCount -= 1;
-        if (reference.status === ReferenceStatus.USED) {
-          reference.status = ReferenceStatus.ACTIVE;
-          reference.usedAt = null;
-          reference.transactionId = null;
-        }
-        await this.referenceRepo.save(reference);
-
-        throw new BadRequestException(
-          `Payment processing failed: CBS transfer error - ${transferResult.error}`,
-        );
-      }
-    }
 
     // Send notifications after successful payment (non-blocking)
     try {
@@ -261,27 +257,19 @@ export class PaymentService {
   }
 
   /**
-   * Execute CBS transfer for payment settlement (REQUIRED - fails payment if it fails)
+   * Execute CBS transfer BEFORE saving payment
+   * This ensures payment is only saved if GL transfer succeeds
    */
-  private async executeCBSTransferRequired(
-    payment: Payment,
+  private async executeCBSTransferBeforePayment(
+    dto: CreatePaymentDto,
     reference: PaymentReference,
     fsp: FinancialServiceProvider,
+    primaryBankAccount: any,
   ): Promise<{ success: boolean; error?: string }> {
     const serviceProvider = reference.serviceProvider;
-    const primaryBankAccount = serviceProvider.bankAccounts?.find(
-      (account) => account.isPrimary && account.isActive,
-    );
-
-    if (!primaryBankAccount) {
-      return {
-        success: false,
-        error: `No primary bank account for SP ${serviceProvider.businessName}`,
-      };
-    }
 
     // Calculate commission and net amount
-    const grossAmount = Number(payment.amountPaid);
+    const grossAmount = Number(dto.amountPaid);
     const commissionRate = 0; // TODO: Make configurable via settings or config
     const commission = this.cbsService.calculateCommission(
       grossAmount,
@@ -294,35 +282,35 @@ export class PaymentService {
     const spDepositAccount = primaryBankAccount.accountNumber;
 
     this.logger.log(
-      `Initiating CBS transfer: ` +
+      `Initiating CBS transfer (before payment save): ` +
       `FSP: ${fsp.name} (${fsp.fspCode}) | ` +
       `Amount: ${netAmount} (Gross: ${grossAmount}, Commission: ${commission}, Rate: ${commissionRate}%) | ` +
       `From: ${fspGLAccount} (${fsp.glAccountName || 'FSP GL Account'}) | ` +
       `To: ${spDepositAccount} (${serviceProvider.businessName})`,
     );
 
-    // Execute transfer
+    // Execute transfer without payment ID (will be null in cbs_transfers table)
     const transferResult = await this.cbsService.executeTransfer(
       {
-        reference: payment.referenceNumber,
+        reference: dto.referenceNumber,
         creditAccount: spDepositAccount,
         debitAccount: fspGLAccount,
-        currency: payment.currency || 'TZS',
+        currency: dto.currency || 'TZS',
         amount: netAmount,
         description: `Payment settlement for ${reference.referenceNumber} via ${fsp.name} - ${serviceProvider.businessName}`,
         type: TransferType.GL_TO_DEPOSIT,
       },
-      payment.id,
+      null, // No payment ID yet - payment will be saved after CBS success
     );
 
     if (transferResult.success) {
       this.logger.log(
-        `CBS transfer successful for payment ${payment.id}: ${transferResult.cbsReference}`,
+        `CBS transfer successful: ${transferResult.cbsReference}`,
       );
       return { success: true };
     } else {
       this.logger.error(
-        `CBS transfer failed for payment ${payment.id}: ${transferResult.error}`,
+        `CBS transfer failed: ${transferResult.error}`,
       );
       return {
         success: false,
