@@ -12,6 +12,7 @@ import {
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
 import { PaymentService } from './payment.service';
 import { ReferenceService } from '../reference/reference.service';
+import { ApefClientService } from '../apef/apef-client.service';
 import { PspApiAuthGuard } from '../auth/guards/psp-api-auth.guard';
 import { CreatePaymentDto } from './dto/payment.dto';
 
@@ -33,6 +34,7 @@ export class PspPaymentController {
   constructor(
     private readonly paymentService: PaymentService,
     private readonly referenceService: ReferenceService,
+    private readonly apefClientService: ApefClientService,
   ) {}
 
   /**
@@ -180,6 +182,33 @@ export class PspPaymentController {
   })
   async getReferenceDetails(@Param('referenceNumber') referenceNumber: string) {
     try {
+      // Route APEF references (starting with 001 or 002) to APEF API
+      if (referenceNumber.startsWith('001') || referenceNumber.startsWith('002')) {
+        const apefResult = await this.apefClientService.validateAccount(referenceNumber);
+
+        if (!apefResult.success) {
+          return {
+            success: false,
+            error: {
+              code: 'APEF_VALIDATION_FAILED',
+              message: apefResult.errorMessage || 'APEF reference validation failed',
+            },
+          };
+        }
+
+        return {
+          success: true,
+          data: {
+            referenceNumber,
+            customerName: apefResult.customerName,
+            amount: apefResult.amount,
+            currency: apefResult.currency,
+            description: apefResult.billDescription,
+            source: 'APEF',
+          },
+        };
+      }
+
       const reference = await this.referenceService.findByReferenceNumber(referenceNumber);
 
       if (!reference) {
