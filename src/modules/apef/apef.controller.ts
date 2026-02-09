@@ -25,7 +25,7 @@ export class ApefController {
 
   /**
    * @deprecated - Use normal payment channels (M-Pesa, TigoPesa, PSP) instead.
-   * Those channels automatically route to APEF if reference starts with "90".
+   * Those channels automatically route to APEF if reference starts with "001" or "002".
    *
    * Direct APEF payment endpoint (for testing/admin purposes only)
    * POST /apef/payments
@@ -124,8 +124,8 @@ export class ApefController {
       isApef,
       flow: isApef ? 'APEF' : 'INTERNAL',
       message: isApef
-        ? 'Reference starts with 90 - will be processed via APEF flow'
-        : 'Reference does not start with 90 - will be processed via Internal flow',
+        ? 'Reference starts with 001 or 002 - will be processed via APEF flow'
+        : 'Reference does not start with 001 or 002 - will be processed via Internal flow',
     };
   }
 

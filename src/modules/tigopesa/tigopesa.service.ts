@@ -29,7 +29,7 @@ import { ApefChannel } from '../apef/entities/apef-payment.entity';
 @Injectable()
 export class TigoPesaService {
   private readonly logger = new Logger(TigoPesaService.name);
-  private readonly APEF_PREFIX = '90';
+  private readonly APEF_PREFIXES = ['001', '002'];
 
   constructor(
     @InjectRepository(TigoPesaTransaction)
@@ -45,10 +45,10 @@ export class TigoPesaService {
   ) {}
 
   /**
-   * Check if reference is APEF (starts with 90)
+   * Check if reference is APEF (starts with 001 or 002)
    */
   private isApefReference(reference: string): boolean {
-    return reference?.startsWith(this.APEF_PREFIX);
+    return this.APEF_PREFIXES.some(prefix => reference?.startsWith(prefix));
   }
 
   /**
@@ -257,7 +257,7 @@ export class TigoPesaService {
     this.logger.log(`Processing TigoPesa payment: ${message.txnId}`);
 
     try {
-      // Check if this is an APEF reference (starts with 90)
+      // Check if this is an APEF reference (starts with 001 or 002)
       if (this.isApefReference(message.customerReferenceId)) {
         this.logger.log(`Reference ${message.customerReferenceId} is APEF - routing to APEF flow`);
         return await this.processApefPayment(message);
@@ -384,12 +384,14 @@ export class TigoPesaService {
 
       if (apefResult.success) {
         // Update TigoPesa transaction status
+        // Note: For APEF payments, paymentId is null because APEF uses its own ApefPayment entity
+        // The apefResult.paymentId is an ApefPayment ID, not a Payment ID
         const refId = this.generateRefId();
         await this.updateTransactionStatus(
           message.txnId,
           TigoPesaTransactionStatus.COMPLETED,
           refId,
-          apefResult.paymentId,
+          null, // APEF payments don't link to Payment entity
           null,
           TigoPesaErrorCode.SUCCESS,
         );

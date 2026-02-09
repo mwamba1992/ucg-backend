@@ -15,11 +15,12 @@ import {
   ApefDepositNotificationRequestDto,
 } from './dto/apef.dto';
 import { FinancialServiceProvider } from '../financial-service-provider/entities/financial-service-provider.entity';
+import { ServiceProvider } from '../service-provider/entities/service-provider.entity';
 
 @Injectable()
 export class ApefPaymentService {
   private readonly logger = new Logger(ApefPaymentService.name);
-  private readonly APEF_PREFIX = '90';
+  private readonly APEF_PREFIXES = ['001', '002'];
 
   constructor(
     @InjectRepository(ApefReference)
@@ -28,16 +29,18 @@ export class ApefPaymentService {
     private readonly apefPaymentRepo: Repository<ApefPayment>,
     @InjectRepository(FinancialServiceProvider)
     private readonly fspRepo: Repository<FinancialServiceProvider>,
+    @InjectRepository(ServiceProvider)
+    private readonly serviceProviderRepo: Repository<ServiceProvider>,
     private readonly apefClientService: ApefClientService,
     private readonly cbsService: CBSService,
     private readonly configService: ConfigService,
   ) {}
 
   /**
-   * Check if a reference is an APEF reference (starts with 90)
+   * Check if a reference is an APEF reference (starts with 001 or 002)
    */
   isApefReference(reference: string): boolean {
-    return reference?.startsWith(this.APEF_PREFIX);
+    return this.APEF_PREFIXES.some(prefix => reference?.startsWith(prefix));
   }
 
   /**
@@ -64,11 +67,11 @@ export class ApefPaymentService {
 
     // Step 2: Verify it's an APEF reference
     if (!this.isApefReference(dto.reference)) {
-      this.logger.warn(`Reference ${dto.reference} is not an APEF reference (must start with 90)`);
+      this.logger.warn(`Reference ${dto.reference} is not an APEF reference (must start with 001 or 002)`);
       return {
         success: false,
         errorCode: ApefErrorCode.INVALID_REFERENCE_PREFIX,
-        errorDescription: `Reference must start with '90' for APEF processing`,
+        errorDescription: `Reference must start with '001' or '002' for APEF processing`,
       };
     }
 
@@ -286,13 +289,35 @@ export class ApefPaymentService {
       };
     }
 
-    // For APEF, the reference (apefAccountNumber) is used as the credit account
-    // This is per user's specification
-    const creditAccount = reference.referenceNumber; // APEF account number
+    // Query service provider with spCode 'APE' to get the credit account (bank account)
+    const apefServiceProvider = await this.serviceProviderRepo.findOne({
+      where: { spCode: 'APE' },
+      relations: ['bankAccounts'],
+    });
+
+    if (!apefServiceProvider) {
+      return {
+        success: false,
+        error: `Service provider with spCode 'APE' not found`,
+      };
+    }
+
+    // Get primary active bank account, or first active bank account
+    const bankAccounts = apefServiceProvider.bankAccounts?.filter(acc => acc.isActive) || [];
+    const primaryBankAccount = bankAccounts.find(acc => acc.isPrimary) || bankAccounts[0];
+
+    if (!primaryBankAccount) {
+      return {
+        success: false,
+        error: `No active bank account found for APEF service provider`,
+      };
+    }
+
+    const creditAccount = primaryBankAccount.accountNumber;
 
     this.logger.log(
       `Executing CBS transfer: amount=${payment.paidAmount}, ` +
-      `from=${fsp.glAccountNumber} (${fsp.name}), to=${creditAccount} (APEF Account)`,
+      `from=${fsp.glAccountNumber} (${fsp.name}), to=${creditAccount} (APEF SP Bank Account)`,
     );
 
     const transferResult = await this.cbsService.executeTransfer(
@@ -342,8 +367,8 @@ export class ApefPaymentService {
     const request: ApefDepositNotificationRequestDto = {
       transactionReference,
       apefAccountNumber: reference.referenceNumber,
-      bankAccountName: payment.payerName || bankName || 'UCG Bank',
-      bankAccountNumber: reference.referenceNumber,
+      bankAccountName: null,
+      bankAccountNumber: null,
       amount: Number(payment.paidAmount),
       currency: payment.currency || 'TZS',
       paymentMethod: this.mapChannelToPaymentMethod(payment.channel),
@@ -385,8 +410,8 @@ export class ApefPaymentService {
    */
   private mapChannelToPaymentMethod(channel: ApefChannel): string {
     const mapping: Record<ApefChannel, string> = {
-      [ApefChannel.TIGO]: 'MOBILE_MONEY',
-      [ApefChannel.VODA]: 'MOBILE_MONEY',
+      [ApefChannel.TIGO]: 'BANK_TRANSFER',
+      [ApefChannel.VODA]: 'BANK_TRANSFER',
       [ApefChannel.BANK]: 'BANK_TRANSFER',
       [ApefChannel.NORMAL]: 'BANK_TRANSFER',
     };
