@@ -272,15 +272,45 @@ export class PaymentService {
         reference.serviceProvider.businessName,
       );
 
-      // Notify service provider
-      await this.notificationService.notifyPaymentReceived(
-        reference.serviceProvider.email,
-        reference.serviceProvider.phoneNumber,
-        reference.referenceNumber,
-        Number(dto.amountPaid),
-        reference.customerName,
-        reference.serviceProvider.businessName,
-      );
+      const spSettings = reference.serviceProvider.settings;
+
+      // Notify service provider via SMS/Email based on settings
+      if (!spSettings || spSettings.smsNotifications || spSettings.emailNotifications) {
+        await this.notificationService.notifyPaymentReceived(
+          spSettings?.emailNotifications !== false ? reference.serviceProvider.email : null,
+          spSettings?.smsNotifications !== false ? reference.serviceProvider.phoneNumber : null,
+          reference.referenceNumber,
+          Number(dto.amountPaid),
+          reference.customerName,
+          reference.serviceProvider.businessName,
+        );
+      }
+
+      // Send webhook notification if enabled in SP settings
+      if (spSettings?.webhookEnabled && spSettings?.webhookUrl) {
+        const totalPaid = Number(reference.totalPaid) + Number(dto.amountPaid);
+        const remainingAmount = Number(reference.amount) - totalPaid;
+
+        await this.notificationService.sendPaymentWebhook(
+          spSettings.webhookUrl,
+          spSettings.webhookSecret || null,
+          {
+            event: 'payment.received',
+            referenceNumber: reference.referenceNumber,
+            amountPaid: Number(dto.amountPaid),
+            currency: dto.currency || 'TZS',
+            customerName: reference.customerName,
+            payerName: dto.payerName,
+            payerPhone: dto.payerPhone,
+            paymentChannel: dto.paymentChannel,
+            fspCode: dto.fspCode,
+            totalPaid,
+            remainingAmount: Math.max(0, remainingAmount),
+            isFullyPaid: remainingAmount <= 0,
+            paidAt: savedPayment.paidAt?.toISOString() || new Date().toISOString(),
+          },
+        );
+      }
     } catch (error) {
       this.logger.error(`Failed to send payment notifications: ${error.message}`);
       // Don't fail payment for notification errors

@@ -126,10 +126,16 @@ export class NotificationService {
     subject: string,
     sender: string = 'UCG',
   ): Promise<{ sms: NotificationResult; email: NotificationResult }> {
-    const [sms, emailResult] = await Promise.all([
-      this.sendSMS(phoneNumber, message, subject),
-      this.sendEmail(email, message, subject, sender),
-    ]);
+    const promises: [Promise<NotificationResult>, Promise<NotificationResult>] = [
+      phoneNumber
+        ? this.sendSMS(phoneNumber, message, subject)
+        : Promise.resolve({ success: false, error: 'Phone number not provided' }),
+      email
+        ? this.sendEmail(email, message, subject, sender)
+        : Promise.resolve({ success: false, error: 'Email not provided' }),
+    ];
+
+    const [sms, emailResult] = await Promise.all(promises);
 
     return { sms, email: emailResult };
   }
@@ -325,6 +331,77 @@ export class NotificationService {
     const message = `Dear ${businessName},\n\nYour settlement has been processed successfully.\n\nAmount: TZS ${amount.toLocaleString()}\nTransactions: ${transactionCount}\nSettlement Date: ${settlementDate.toLocaleDateString()}\n\nThe funds will be credited to your account shortly.\n\nBest regards,\nUCG Team`;
 
     await this.sendBoth(phoneNumber, email, message, subject, 'UCG');
+  }
+
+  /**
+   * Send webhook notification for payment to Service Provider
+   */
+  async sendPaymentWebhook(
+    webhookUrl: string,
+    webhookSecret: string | null,
+    payload: {
+      event: string;
+      referenceNumber: string;
+      amountPaid: number;
+      currency: string;
+      customerName: string;
+      payerName: string;
+      payerPhone: string;
+      paymentChannel: string;
+      fspCode: string;
+      totalPaid: number;
+      remainingAmount: number;
+      isFullyPaid: boolean;
+      paidAt: string;
+    },
+  ): Promise<NotificationResult> {
+    try {
+      if (!webhookUrl) {
+        this.logger.warn('Webhook URL is empty - skipping webhook notification');
+        return { success: false, error: 'Webhook URL not configured' };
+      }
+
+      const body = {
+        ...payload,
+        timestamp: new Date().toISOString(),
+      };
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'User-Agent': 'UCG-Webhook/1.0',
+      };
+
+      // Sign payload with webhook secret if provided
+      if (webhookSecret) {
+        const signature = require('crypto')
+          .createHmac('sha256', webhookSecret)
+          .update(JSON.stringify(body))
+          .digest('hex');
+        headers['X-UCG-Signature'] = signature;
+      }
+
+      this.logger.log(
+        `Sending payment webhook to ${webhookUrl} for reference ${payload.referenceNumber}`,
+      );
+
+      const response = await firstValueFrom(
+        this.httpService.post(webhookUrl, body, {
+          headers,
+          timeout: 10000,
+        }),
+      );
+
+      this.logger.log(
+        `Webhook sent successfully to ${webhookUrl} - Status: ${response.status}`,
+      );
+
+      return { success: true, statusCode: String(response.status) };
+    } catch (error) {
+      this.logger.error(
+        `Failed to send webhook to ${webhookUrl}: ${error.message}`,
+      );
+      return { success: false, error: error.message };
+    }
   }
 
   /**
