@@ -9,6 +9,7 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateIf,
 } from 'class-validator';
 import { SettlementFrequency } from '../entities/service-provider-settings.entity';
 
@@ -52,11 +53,12 @@ export class CreateSettingsDto {
   minimumSettlementAmount?: number;
 
   @ApiPropertyOptional({
-    description: 'Webhook URL for notifications',
+    description: 'Webhook URL for notifications (required when webhookEnabled is true)',
     example: 'https://mwangaschool.co.tz/api/webhook',
   })
+  @ValidateIf((o) => o.webhookEnabled === true)
+  @IsUrl({}, { message: 'webhookUrl must be a valid URL when webhookEnabled is true' })
   @IsOptional()
-  @IsUrl()
   webhookUrl?: string;
 
   @ApiPropertyOptional({
@@ -66,6 +68,15 @@ export class CreateSettingsDto {
   @IsOptional()
   @IsBoolean()
   webhookEnabled?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Webhook secret for HMAC-SHA256 payload signing',
+    example: 'whsec_your_secret_here',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  webhookSecret?: string;
 
   @ApiPropertyOptional({
     description: 'Enable email notifications',
