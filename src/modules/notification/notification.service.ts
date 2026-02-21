@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
+import * as https from 'https';
 import {
   SendNotificationDto,
   NotificationType,
@@ -388,6 +389,7 @@ export class NotificationService {
         this.httpService.post(webhookUrl, body, {
           headers,
           timeout: 10000,
+          httpsAgent: new https.Agent({ rejectUnauthorized: false }),
         }),
       );
 
