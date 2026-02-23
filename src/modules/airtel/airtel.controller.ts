@@ -18,7 +18,6 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { Public } from '../auth/decorators/public.decorator';
 import { UserRole } from '../user/entities/user.entity';
 import { AirtelService } from './airtel.service';
-import { AirtelJwtGuard } from './guards/airtel-jwt.guard';
 
 @ApiTags('Airtel')
 @Controller('airtel')
@@ -34,7 +33,6 @@ export class AirtelController {
    * Called by Airtel to validate if a reference/account exists before processing payment
    */
   @Public()
-  @UseGuards(AirtelJwtGuard)
   @Post('validate')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -77,7 +75,6 @@ export class AirtelController {
    * Called by Airtel to process the actual payment after validation
    */
   @Public()
-  @UseGuards(AirtelJwtGuard)
   @Post('process')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -120,7 +117,6 @@ export class AirtelController {
    * Called by Airtel to check the status of a previously processed transaction
    */
   @Public()
-  @UseGuards(AirtelJwtGuard)
   @Post('enquiry')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -162,7 +158,6 @@ export class AirtelController {
    * Called by Airtel to fetch bill details for a customer reference
    */
   @Public()
-  @UseGuards(AirtelJwtGuard)
   @Post('billfetch')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -203,7 +198,6 @@ export class AirtelController {
    * Called by Airtel to look up customer/reference details
    */
   @Public()
-  @UseGuards(AirtelJwtGuard)
   @Post('lookup')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({

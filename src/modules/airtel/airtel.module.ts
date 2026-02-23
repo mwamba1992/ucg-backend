@@ -8,7 +8,6 @@ import { AirtelController } from './airtel.controller';
 import { AirtelConsumer } from './airtel.consumer';
 import { AirtelService } from './airtel.service';
 import { AirtelProducer } from './airtel.producer';
-import { AirtelJwtGuard } from './guards/airtel-jwt.guard';
 import { RABBITMQ_QUEUES } from '../../config/rabbitmq.config';
 import { PaymentModule } from '../payment/payment.module';
 import { ReferenceModule } from '../reference/reference.module';
@@ -54,7 +53,6 @@ import { ApefModule } from '../apef/apef.module';
   providers: [
     AirtelService,
     AirtelProducer,
-    AirtelJwtGuard,
   ],
   exports: [
     AirtelService,

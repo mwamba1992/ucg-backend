@@ -43,17 +43,9 @@ Airtel  ──XML+JWT──>  UCG Airtel Module  ──>  ReferenceService (vali
 
 ## Authentication
 
-### Airtel C2B Endpoints (JWT HS512)
+### Airtel C2B Endpoints (Public)
 
-Airtel signs requests with a JWT token using the **HS512** algorithm and a shared secret key.
-
-```
-Authorization: Bearer <jwt_token>
-```
-
-The shared key is configured via:
-1. `airtel_config` table (`sharedKey` column) - checked first
-2. `AIRTEL_SHARED_KEY` environment variable - fallback
+The 5 Airtel-facing endpoints are **public** (no authentication required). Airtel calls them directly, same as TigoPesa/M-Pesa webhooks.
 
 ### Admin Endpoints (UCG JWT)
 
@@ -72,7 +64,7 @@ Required roles: `SUPER_ADMIN`, `ADMIN`, or `MANAGER` (varies by endpoint).
 All endpoints:
 - Accept: `application/xml` or `text/xml`
 - Return: XML with `<COMMAND>` root element
-- Auth: Airtel JWT (HS512)
+- Auth: **Public** (no authentication - same as TigoPesa/M-Pesa webhooks)
 - Always return HTTP 200 with result in XML body (never HTTP error codes)
 
 ### 1. Validate Transaction
@@ -432,9 +424,6 @@ Roles: `SUPER_ADMIN`, `ADMIN`, `MANAGER`
 # Base URL
 BASE_URL="http://localhost:3000/api/v1"
 
-# Airtel JWT token (HS512 signed with shared key)
-AIRTEL_TOKEN="eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9..."
-
 # UCG Admin JWT token
 ADMIN_TOKEN="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 
@@ -449,7 +438,6 @@ REF_NUMBER="MHB-0000001-ABC"
 ```bash
 curl -X POST "${BASE_URL}/airtel/validate" \
   -H "Content-Type: application/xml" \
-  -H "Authorization: Bearer ${AIRTEL_TOKEN}" \
   -d '<?xml version="1.0"?>
 <COMMAND>
   <TYPE>VALIDATETXN</TYPE>
@@ -467,7 +455,6 @@ curl -X POST "${BASE_URL}/airtel/validate" \
 ```bash
 curl -X POST "${BASE_URL}/airtel/process" \
   -H "Content-Type: application/xml" \
-  -H "Authorization: Bearer ${AIRTEL_TOKEN}" \
   -d '<?xml version="1.0"?>
 <COMMAND>
   <TYPE>PROCESSTXN</TYPE>
@@ -485,7 +472,6 @@ curl -X POST "${BASE_URL}/airtel/process" \
 ```bash
 curl -X POST "${BASE_URL}/airtel/enquiry" \
   -H "Content-Type: application/xml" \
-  -H "Authorization: Bearer ${AIRTEL_TOKEN}" \
   -d '<?xml version="1.0"?>
 <COMMAND>
   <TYPE>TXNENQUIRY</TYPE>
@@ -500,7 +486,6 @@ curl -X POST "${BASE_URL}/airtel/enquiry" \
 ```bash
 curl -X POST "${BASE_URL}/airtel/billfetch" \
   -H "Content-Type: application/xml" \
-  -H "Authorization: Bearer ${AIRTEL_TOKEN}" \
   -d '<?xml version="1.0"?>
 <COMMAND>
   <TYPE>BILLFETCH</TYPE>
@@ -515,7 +500,6 @@ curl -X POST "${BASE_URL}/airtel/billfetch" \
 ```bash
 curl -X POST "${BASE_URL}/airtel/lookup" \
   -H "Content-Type: application/xml" \
-  -H "Authorization: Bearer ${AIRTEL_TOKEN}" \
   -d '<?xml version="1.0"?>
 <COMMAND>
   <TYPE>LOOKUPDETAILS</TYPE>
