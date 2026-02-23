@@ -76,6 +76,24 @@ async function bootstrap() {
     },
   });
 
+  // Connect RabbitMQ microservice for Airtel payment processing queue
+  app.connectMicroservice<MicroserviceOptions>({
+    transport: Transport.RMQ,
+    options: {
+      urls: [process.env.RABBITMQ_URL || 'amqp://localhost:5672'],
+      queue: 'ucg.airtel.payment.processing',
+      queueOptions: {
+        durable: true,
+        arguments: {
+          'x-message-ttl': 3600000,
+          'x-max-priority': 10,
+        },
+      },
+      noAck: false,
+      prefetchCount: 1,
+    },
+  });
+
   // Global prefix
   const apiPrefix = process.env.API_PREFIX || 'api/v1';
   app.setGlobalPrefix(apiPrefix);
@@ -89,6 +107,16 @@ async function bootstrap() {
   app.use('/api/v1/vodacom/transaction', bodyParser.text({ type: 'text/xml' }));
   app.use('/api/v1/mixx/transaction', bodyParser.text({ type: 'application/xml' }));
   app.use('/api/v1/mixx/transaction', bodyParser.text({ type: 'text/xml' }));
+  app.use('/api/v1/airtel/validate', bodyParser.text({ type: 'application/xml' }));
+  app.use('/api/v1/airtel/validate', bodyParser.text({ type: 'text/xml' }));
+  app.use('/api/v1/airtel/process', bodyParser.text({ type: 'application/xml' }));
+  app.use('/api/v1/airtel/process', bodyParser.text({ type: 'text/xml' }));
+  app.use('/api/v1/airtel/enquiry', bodyParser.text({ type: 'application/xml' }));
+  app.use('/api/v1/airtel/enquiry', bodyParser.text({ type: 'text/xml' }));
+  app.use('/api/v1/airtel/billfetch', bodyParser.text({ type: 'application/xml' }));
+  app.use('/api/v1/airtel/billfetch', bodyParser.text({ type: 'text/xml' }));
+  app.use('/api/v1/airtel/lookup', bodyParser.text({ type: 'application/xml' }));
+  app.use('/api/v1/airtel/lookup', bodyParser.text({ type: 'text/xml' }));
 
   // Global validation pipe
   app.useGlobalPipes(

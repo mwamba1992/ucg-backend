@@ -55,6 +55,8 @@ export class PaymentService {
       'TIGO': ApefChannel.TIGO,
       'TIGOPESA': ApefChannel.TIGO,
       'MIXX': ApefChannel.TIGO,
+      'AIRTEL': ApefChannel.AIRTEL,
+      'AIRTEL MONEY': ApefChannel.AIRTEL,
       'BANK': ApefChannel.BANK,
       'Bank': ApefChannel.BANK,
     };

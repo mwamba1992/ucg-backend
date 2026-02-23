@@ -164,7 +164,7 @@ export class PaymentConsumer {
       };
     }
 
-    
+
   }
 
   // TODO: Implement actual notification methods

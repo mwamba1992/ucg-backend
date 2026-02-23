@@ -23,6 +23,7 @@ export enum ApefPaymentStatus {
 export enum ApefChannel {
   TIGO = 'TIGO',
   VODA = 'VODA',
+  AIRTEL = 'AIRTEL',
   BANK = 'BANK',
   NORMAL = 'NORMAL',
 }
