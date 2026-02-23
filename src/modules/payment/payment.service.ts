@@ -298,6 +298,7 @@ export class PaymentService {
           spSettings.webhookSecret || null,
           {
             event: 'payment.received',
+            transactionId: savedPayment.id,
             referenceNumber: reference.referenceNumber,
             amountPaid: Number(dto.amountPaid),
             currency: dto.currency || 'TZS',

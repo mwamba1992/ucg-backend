@@ -342,6 +342,7 @@ export class NotificationService {
     webhookSecret: string | null,
     payload: {
       event: string;
+      transactionId: string;
       referenceNumber: string;
       amountPaid: number;
       currency: string;
