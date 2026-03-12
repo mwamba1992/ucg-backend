@@ -269,8 +269,8 @@ export class ApefPaymentService {
       };
     }
 
-    // Get FSP based on channel
-    const fspCode = this.mapChannelToFspCode(dto.channel);
+    // Get FSP: use original fspCode from PSP payload if provided, otherwise derive from channel
+    const fspCode = dto.fspCode || this.mapChannelToFspCode(dto.channel);
     const fsp = await this.fspRepo.findOne({
       where: { fspCode },
     });

@@ -56,7 +56,17 @@ export class PaymentService {
       'TIGOPESA': ApefChannel.TIGO,
       'MIXX': ApefChannel.TIGO,
       'BANK': ApefChannel.BANK,
-      'Bank': ApefChannel.BANK,
+      'MHB': ApefChannel.BANK,
+      'NMB': ApefChannel.BANK,
+      'CRDB': ApefChannel.BANK,
+      'NBC': ApefChannel.BANK,
+      'STANBIC': ApefChannel.BANK,
+      'EQUITY': ApefChannel.BANK,
+      'DTB': ApefChannel.BANK,
+      'STANDARD_CHARTERED': ApefChannel.BANK,
+      'TPB': ApefChannel.BANK,
+      'EXIM': ApefChannel.BANK,
+      'AMANA': ApefChannel.BANK,
     };
     return channelMap[paymentChannel?.toUpperCase()] || ApefChannel.NORMAL;
   }
@@ -75,6 +85,7 @@ export class PaymentService {
       externalTxnId: dto.transactionId || crypto.randomUUID(),
       payerName: dto.payerName,
       payerPhone: dto.payerPhone,
+      fspCode: dto.fspCode,
       rawPayload: dto as any,
     });
 

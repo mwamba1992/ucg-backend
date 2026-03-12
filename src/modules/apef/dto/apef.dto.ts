@@ -34,6 +34,10 @@ export class ApefPaymentRequestDto {
   @IsOptional()
   @IsString()
   currency?: string;
+
+  @IsOptional()
+  @IsString()
+  fspCode?: string; // Original FSP code from PSP payload (e.g., MHB, NMB, CRDB)
 }
 
 // ============ APEF API DTOs ============
