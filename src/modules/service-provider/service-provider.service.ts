@@ -41,6 +41,37 @@ export class ServiceProviderService {
   ) {}
 
   /**
+   * Validate notification settings consistency
+   * Ensures at least one notification channel is enabled and webhook config is valid
+   */
+  private validateNotificationSettings(settings: {
+    webhookEnabled?: boolean;
+    webhookUrl?: string;
+    emailNotifications?: boolean;
+    smsNotifications?: boolean;
+  }): void {
+    if (!settings) return;
+
+    // If webhook is enabled, webhookUrl must be set
+    if (settings.webhookEnabled && !settings.webhookUrl) {
+      throw new BadRequestException(
+        'webhookUrl is required when webhookEnabled is true',
+      );
+    }
+
+    // If all notification channels are explicitly disabled, reject
+    const emailDisabled = settings.emailNotifications === false;
+    const smsDisabled = settings.smsNotifications === false;
+    const webhookDisabled = !settings.webhookEnabled;
+
+    if (emailDisabled && smsDisabled && webhookDisabled) {
+      throw new BadRequestException(
+        'At least one notification channel must be enabled (email, SMS, or webhook)',
+      );
+    }
+  }
+
+  /**
    * Generate unique SP code (3 characters)
    */
   private async generateSpCode(businessName: string): Promise<string> {
@@ -169,6 +200,9 @@ export class ServiceProviderService {
       }),
     );
     await this.bankAccountRepository.save(bankAccounts);
+
+    // Validate notification settings before saving
+    this.validateNotificationSettings(createDto.settings);
 
     // Create settings (use defaults if not provided)
     const settings = this.settingsRepository.create({
@@ -444,6 +478,16 @@ export class ServiceProviderService {
         });
 
         if (existingSettings) {
+          // Merge existing with incoming to validate the final state
+          const mergedSettings = {
+            emailNotifications: existingSettings.emailNotifications,
+            smsNotifications: existingSettings.smsNotifications,
+            webhookEnabled: existingSettings.webhookEnabled,
+            webhookUrl: existingSettings.webhookUrl,
+            ...updateDto.settings,
+          };
+          this.validateNotificationSettings(mergedSettings);
+
           this.logger.log(`📝 Settings found, updating: ${existingSettings.id}`);
           Object.assign(existingSettings, updateDto.settings);
           await this.settingsRepository.save(existingSettings);

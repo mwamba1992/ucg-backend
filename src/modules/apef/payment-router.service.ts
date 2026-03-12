@@ -161,6 +161,8 @@ export class PaymentRouterService {
       case 'VODA':
       case 'VODACOM':
         return ApefChannel.VODA;
+      case 'AIRTEL':
+        return ApefChannel.AIRTEL;
       case 'BANK':
         return ApefChannel.BANK;
       case 'NORMAL':
@@ -184,6 +186,8 @@ export class PaymentRouterService {
       case 'VODACOM':
       case 'MPESA':
         return 'VODACOM';   // M-Pesa uses VODACOM
+      case 'AIRTEL':
+        return 'AIRTEL';    // Airtel Money
       case 'BANK':
         return 'BANK';
       default:

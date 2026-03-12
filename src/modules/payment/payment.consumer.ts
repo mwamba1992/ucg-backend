@@ -163,6 +163,8 @@ export class PaymentConsumer {
         requestId: message.requestId,
       };
     }
+
+
   }
 
   // TODO: Implement actual notification methods

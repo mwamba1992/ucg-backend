@@ -412,6 +412,7 @@ export class ApefPaymentService {
     const mapping: Record<ApefChannel, string> = {
       [ApefChannel.TIGO]: 'BANK_TRANSFER',
       [ApefChannel.VODA]: 'BANK_TRANSFER',
+      [ApefChannel.AIRTEL]: 'MOBILE_MONEY',
       [ApefChannel.BANK]: 'BANK_TRANSFER',
       [ApefChannel.NORMAL]: 'BANK_TRANSFER',
     };
@@ -435,6 +436,7 @@ export class ApefPaymentService {
     const mapping: Record<ApefChannel, string> = {
       [ApefChannel.TIGO]: 'MIXX',      // TigoPesa uses MIXX
       [ApefChannel.VODA]: 'VODACOM',   // M-Pesa uses VODACOM
+      [ApefChannel.AIRTEL]: 'AIRTEL',  // Airtel Money
       [ApefChannel.BANK]: 'BANK',      // Generic bank
       [ApefChannel.NORMAL]: 'BANK',    // Normal channel defaults to BANK
     };

@@ -19,6 +19,7 @@ import { MpesaModule } from './modules/mpesa/mpesa.module';
 import { TigoPesaModule } from './modules/tigopesa/tigopesa.module';
 import { FinancialServiceProviderModule } from './modules/financial-service-provider/financial-service-provider.module';
 import { ApefModule } from './modules/apef/apef.module';
+import { AirtelModule } from './modules/airtel/airtel.module';
 import { ReportModule } from './modules/report/report.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import { RolesGuard } from './modules/auth/guards/roles.guard';
@@ -55,6 +56,7 @@ import { RolesGuard } from './modules/auth/guards/roles.guard';
     MpesaModule, // M-Pesa C2B payment integration
     TigoPesaModule, // TigoPesa W2A payment integration
     ApefModule, // APEF (External/APEX) payment integration
+    AirtelModule, // Airtel C2B payment integration
     ReportModule, // Report generation module
   ],
   controllers: [AppController],

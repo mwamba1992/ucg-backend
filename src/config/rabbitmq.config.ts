@@ -30,6 +30,7 @@ export const RABBITMQ_QUEUES = {
   MPESA_CALLBACK: 'ucg.mpesa.callback',
   MPESA_VALIDATION: 'ucg.mpesa.validation',
   TIGOPESA_PAYMENT_PROCESSING: 'ucg.tigopesa.payment.processing',
+  AIRTEL_PAYMENT_PROCESSING: 'ucg.airtel.payment.processing',
 } as const;
 
 // Exchange names
@@ -38,6 +39,7 @@ export const RABBITMQ_EXCHANGES = {
   PAYMENT: 'ucg.payment.exchange',
   MPESA: 'ucg.mpesa.exchange',
   TIGOPESA: 'ucg.tigopesa.exchange',
+  AIRTEL: 'ucg.airtel.exchange',
   DLX: 'ucg.dlx', // Dead Letter Exchange
 } as const;
 
@@ -53,4 +55,5 @@ export const RABBITMQ_ROUTING_KEYS = {
   MPESA_CALLBACK_SEND: 'mpesa.callback.send',
   MPESA_VALIDATE: 'mpesa.validate',
   TIGOPESA_PAYMENT_PROCESS: 'tigopesa.payment.process',
+  AIRTEL_PAYMENT_PROCESS: 'airtel.payment.process',
 } as const;
