@@ -281,6 +281,16 @@ export class CreateReferenceDto {
   lineItems?: ReferenceLineItemDto[];
 
   @ApiPropertyOptional({
+    description:
+      'Custom reference number. If provided, overrides auto-generated reference number.',
+    example: 'MWA-0001234-A7B',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  referenceNumber?: string;
+
+  @ApiPropertyOptional({
     description: 'Callback URL to receive notification when reference is generated (for async requests)',
     example: 'https://your-app.com/webhooks/reference-created',
   })

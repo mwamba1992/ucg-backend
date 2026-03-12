@@ -130,11 +130,25 @@ export class ReferenceService {
     const serviceProvider = await this.resolveServiceProvider(createDto);
     const serviceProviderId = serviceProvider.id;
 
-    // Generate reference number using the actual spCode and serviceProviderId
-    const referenceNumber = await this.generateReferenceNumber(
-      serviceProvider.spCode,
-      serviceProviderId
-    );
+    // Use provided reference number or generate one
+    let referenceNumber: string;
+    if (createDto.referenceNumber) {
+      // Check uniqueness of the provided reference number
+      const existing = await this.referenceRepository.findOne({
+        where: { referenceNumber: createDto.referenceNumber },
+      });
+      if (existing) {
+        throw new ConflictException(
+          `Reference number ${createDto.referenceNumber} already exists`,
+        );
+      }
+      referenceNumber = createDto.referenceNumber;
+    } else {
+      referenceNumber = await this.generateReferenceNumber(
+        serviceProvider.spCode,
+        serviceProviderId,
+      );
+    }
 
     // Set default expiry if not provided (30 days from now)
     const expiresAt = createDto.expiresAt
