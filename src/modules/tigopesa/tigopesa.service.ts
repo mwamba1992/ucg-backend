@@ -20,6 +20,7 @@ import {
   TigoPesaPaymentProcessingResponse,
 } from './dto/tigopesa-queue.dto';
 import { ReferenceService } from '../reference/reference.service';
+import { PaymentOption } from '../reference/entities/payment-reference.entity';
 import { PaymentService } from '../payment/payment.service';
 import { CBSService } from '../cbs/cbs.service';
 import { TransferType } from '../cbs/entities/cbs-transfer.entity';
@@ -143,8 +144,8 @@ export class TigoPesaService {
         };
       }
 
-      // Check if already fully paid
-      if (reference.isFullyPaid()) {
+      // Check if already fully paid (skip for PERPETUAL references)
+      if (reference.isFullyPaid() && reference.paymentOption !== PaymentOption.PERPETUAL) {
         return {
           valid: false,
           errorCode: TigoPesaErrorCode.ACCOUNT_LOCKED,

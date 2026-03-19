@@ -5,7 +5,7 @@ import { Repository } from 'typeorm';
 import { Payment, PaymentStatus } from './entities/payment.entity';
 import { ReferenceService } from '../reference/reference.service';
 import { CreatePaymentDto } from './dto/payment.dto';
-import { PaymentReference, ReferenceStatus } from '../reference/entities/payment-reference.entity';
+import { PaymentReference, ReferenceStatus, PaymentOption } from '../reference/entities/payment-reference.entity';
 import { PaymentProducer } from './payment.producer';
 import { NotificationService } from '../notification/notification.service';
 import { CBSService } from '../cbs/cbs.service';
@@ -176,8 +176,8 @@ export class PaymentService {
       );
     }
 
-    // Check if already fully paid
-    if (reference.isFullyPaid()) {
+    // Check if already fully paid (skip for PERPETUAL - they accept unlimited payments)
+    if (reference.isFullyPaid() && reference.paymentOption !== PaymentOption.PERPETUAL) {
       throw new BadRequestException(
         'Reference has been fully paid. No further payments accepted.',
       );
@@ -512,8 +512,8 @@ export class PaymentService {
     reference.totalPaid = Number(reference.totalPaid) + Number(amountPaid);
     reference.installmentCount += 1;
 
-    // Check if fully paid
-    if (reference.isFullyPaid()) {
+    // Check if fully paid (PERPETUAL references stay ACTIVE indefinitely)
+    if (reference.isFullyPaid() && reference.paymentOption !== PaymentOption.PERPETUAL) {
       reference.status = ReferenceStatus.USED;
       reference.usedAt = new Date();
       reference.transactionId = paymentId;

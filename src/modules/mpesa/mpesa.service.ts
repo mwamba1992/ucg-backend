@@ -23,6 +23,7 @@ import {
 import { MpesaEncryption } from './utils/mpesa-encryption.util';
 import { MpesaProducer } from './mpesa.producer';
 import { ReferenceService } from '../reference/reference.service';
+import { PaymentOption } from '../reference/entities/payment-reference.entity';
 import { PaymentService } from '../payment/payment.service';
 import { CBSService } from '../cbs/cbs.service';
 import { TransferType } from '../cbs/entities/cbs-transfer.entity';
@@ -303,8 +304,8 @@ export class MpesaService {
         return { valid: false, reason: `Reference ${reference.status}` };
       }
 
-      // Check if already fully paid
-      if (reference.isFullyPaid()) {
+      // Check if already fully paid (skip for PERPETUAL references)
+      if (reference.isFullyPaid() && reference.paymentOption !== PaymentOption.PERPETUAL) {
         return { valid: false, reason: 'Reference already fully paid' };
       }
 

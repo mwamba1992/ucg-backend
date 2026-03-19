@@ -28,6 +28,7 @@ import {
   AirtelPaymentProcessingResponse,
 } from './dto/airtel-queue.dto';
 import { ReferenceService } from '../reference/reference.service';
+import { PaymentOption } from '../reference/entities/payment-reference.entity';
 import { PaymentService } from '../payment/payment.service';
 import { CBSService } from '../cbs/cbs.service';
 import { ApefPaymentService } from '../apef/apef-payment.service';
@@ -330,7 +331,7 @@ export class AirtelService {
         });
       }
 
-      if (reference.isFullyPaid()) {
+      if (reference.isFullyPaid() && reference.paymentOption !== PaymentOption.PERPETUAL) {
         return this.buildResponseXml({
           TYPE: 'BILLFETCHRESPONSE',
           CUSTOMERREFERENCEID: dto.CUSTOMERREFERENCEID,
@@ -461,7 +462,7 @@ export class AirtelService {
         };
       }
 
-      if (reference.isFullyPaid()) {
+      if (reference.isFullyPaid() && reference.paymentOption !== PaymentOption.PERPETUAL) {
         return {
           valid: false,
           errorCode: AirtelErrorCode.ACCOUNT_LOCKED,
