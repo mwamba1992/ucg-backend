@@ -310,6 +310,8 @@ export class PaymentService {
           {
             event: 'payment.received',
             transactionId: savedPayment.id,
+            pspReference: dto.transactionId,
+            spReference: reference.referenceNumber,
             referenceNumber: reference.referenceNumber,
             amountPaid: Number(dto.amountPaid),
             currency: dto.currency || 'TZS',
@@ -322,7 +324,7 @@ export class PaymentService {
             remainingAmount: Math.max(0, remainingAmount),
             isFullyPaid: remainingAmount <= 0,
             paidAt: savedPayment.paidAt?.toISOString() || new Date().toISOString(),
-          },
+          } as any,
         );
       }
     } catch (error) {
@@ -592,6 +594,7 @@ export class PaymentService {
       payerName: dto.payerName,
       payerPhone: dto.payerPhone,
       transactionId: dto.transactionId,
+      pspReference: dto.transactionId || null,
       currency: dto.currency,
       description: dto.description,
       requestId,
