@@ -38,10 +38,10 @@ export class CreateUserDto {
   @IsNotEmpty()
   userType: UserType;
 
-  @ApiProperty({ enum: UserRole, example: UserRole.ANALYST })
-  @IsEnum(UserRole)
+  @ApiProperty({ example: UserRole.ANALYST, description: 'Role name (built-in or custom)' })
+  @IsString()
   @IsNotEmpty()
-  role: UserRole;
+  role: string;
 
   @ApiProperty({ enum: UserStatus, example: UserStatus.ACTIVE, required: false })
   @IsEnum(UserStatus)

@@ -14,10 +14,10 @@ export class QueryUserDto {
   @IsEnum(UserType)
   userType?: UserType;
 
-  @ApiProperty({ enum: UserRole, required: false })
+  @ApiProperty({ required: false, description: 'Filter by role name' })
   @IsOptional()
-  @IsEnum(UserRole)
-  role?: UserRole;
+  @IsString()
+  role?: string;
 
   @ApiProperty({ enum: UserStatus, required: false })
   @IsOptional()

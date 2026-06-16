@@ -19,6 +19,8 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { User, UserRole } from '../user/entities/user.entity';
 import { PermissionsService } from './permission.service';
 import { SetRolePermissionsDto } from './dto/set-role-permissions.dto';
 import { ModifyRolePermissionsDto } from './dto/modify-role-permissions.dto';
@@ -35,6 +37,18 @@ import { ModifyRolePermissionsDto } from './dto/modify-role-permissions.dto';
 @RequirePermissions('system:roles:manage')
 export class PermissionController {
   constructor(private readonly permissionsService: PermissionsService) {}
+
+  @Get('me')
+  @RequirePermissions() // override class-level guard: any authenticated user may read own perms
+  @ApiOperation({ summary: "Get the current user's effective permission codes" })
+  @ApiResponse({ status: 200, description: 'Effective permission codes for the caller' })
+  async myPermissions(@CurrentUser() user: User) {
+    // SUPER_ADMIN bypasses all checks; signal full access with a global wildcard
+    if (user.role === UserRole.SUPER_ADMIN) {
+      return { success: true, data: ['*'] };
+    }
+    return { success: true, data: await this.permissionsService.getRolePermissions(user.role) };
+  }
 
   @Get('catalog')
   @ApiOperation({ summary: 'List the full permission catalog' })

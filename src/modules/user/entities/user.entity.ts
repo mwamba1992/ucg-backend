@@ -78,13 +78,15 @@ export class User {
   @Index()
   userType: UserType;
 
+  // Stored as varchar (not a Postgres enum) so dynamically-created roles can be assigned.
+  // UserRole remains the set of well-known/built-in role values used in code.
   @Column({
-    type: 'enum',
-    enum: UserRole,
+    type: 'varchar',
+    length: 50,
     default: UserRole.VIEWER,
   })
   @Index()
-  role: UserRole;
+  role: string;
 
   @Column({
     type: 'enum',

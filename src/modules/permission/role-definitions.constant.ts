@@ -6,6 +6,7 @@ export interface RoleInfo {
   description: string;
   permissions: string[];
   userType: UserType;
+  isSystem?: boolean;
 }
 
 /**

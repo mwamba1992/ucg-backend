@@ -3,24 +3,39 @@ import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { Public } from '../auth/decorators/public.decorator';
 import { UserRole, UserType } from './entities/user.entity';
 import { PermissionsService } from '../permission/permission.service';
-import { RoleInfo, ROLE_DEFINITIONS } from '../permission/role-definitions.constant';
+import { RolesService } from '../permission/roles.service';
+import { RoleInfo } from '../permission/role-definitions.constant';
+
+const LEGACY_ROLES: string[] = [UserRole.MANAGER, UserRole.OPERATOR, UserRole.VIEWER];
 
 @ApiTags('Roles')
 @Controller('roles')
 export class RolesController {
-  constructor(private readonly permissionsService: PermissionsService) {}
-
-  private readonly roleDefinitions: Record<UserRole, RoleInfo> = ROLE_DEFINITIONS;
+  constructor(
+    private readonly rolesService: RolesService,
+    private readonly permissionsService: PermissionsService,
+  ) {}
 
   /**
-   * Returns roles with metadata (label/description/userType) from the static map and
-   * the `permissions` array replaced by the live, DB-sourced grants for each role.
+   * Build RoleInfo[] from DB roles, attaching live DB-sourced permission codes.
+   * label/description/userType come from the roles table.
    */
-  private async withDbPermissions(roles: RoleInfo[]): Promise<RoleInfo[]> {
+  private async toRoleInfos(
+    filter: (userType: string) => boolean = () => true,
+    includeLegacy = false,
+  ): Promise<RoleInfo[]> {
+    const roles = await this.rolesService.list();
+    const visible = roles.filter(
+      (r) => filter(r.userType) && (includeLegacy || !LEGACY_ROLES.includes(r.name)),
+    );
     return Promise.all(
-      roles.map(async (role) => ({
-        ...role,
-        permissions: await this.permissionsService.getRolePermissions(role.value),
+      visible.map(async (r) => ({
+        value: r.name,
+        label: r.label,
+        description: r.description || '',
+        userType: r.userType as UserType,
+        isSystem: r.isSystem,
+        permissions: await this.permissionsService.getRolePermissions(r.name),
       })),
     );
   }
@@ -29,110 +44,37 @@ export class RolesController {
   @Public()
   @ApiOperation({
     summary: 'Get all available roles',
-    description: 'Returns list of all user roles with descriptions and permissions',
+    description: 'Returns list of all user roles with descriptions and DB-sourced permissions',
   })
-  @ApiQuery({
-    name: 'userType',
-    required: false,
-    enum: UserType,
-    description: 'Filter roles by user type (ADMIN or SERVICE_PROVIDER)',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Roles retrieved successfully',
-    schema: {
-      example: {
-        success: true,
-        data: [
-          {
-            value: 'SUPER_ADMIN',
-            label: 'Super Admin',
-            description: 'System owner with full access',
-            userType: 'ADMIN',
-            permissions: ['users:*', 'service-providers:*'],
-          },
-        ],
-      },
-    },
-  })
+  @ApiQuery({ name: 'userType', required: false, enum: UserType })
+  @ApiResponse({ status: 200, description: 'Roles retrieved successfully' })
   async getRoles(@Query('userType') userType?: UserType) {
-    let roles = Object.values(this.roleDefinitions);
-
-    // Filter by userType if provided
-    if (userType) {
-      roles = roles.filter((role) => role.userType === userType);
-    }
-
-    // Exclude legacy roles by default
-    const activRoles = roles.filter(
-      (role) =>
-        role.value !== UserRole.MANAGER &&
-        role.value !== UserRole.OPERATOR &&
-        role.value !== UserRole.VIEWER,
-    );
-
-    return {
-      success: true,
-      data: await this.withDbPermissions(activRoles),
-    };
+    const data = await this.toRoleInfos((ut) => (userType ? ut === userType : true));
+    return { success: true, data };
   }
 
   @Get('admin')
   @Public()
-  @ApiOperation({
-    summary: 'Get admin portal roles',
-    description: 'Returns only roles for admin portal users',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Admin roles retrieved successfully',
-  })
+  @ApiOperation({ summary: 'Get admin portal roles' })
+  @ApiResponse({ status: 200, description: 'Admin roles retrieved successfully' })
   async getAdminRoles() {
-    const adminRoles = Object.values(this.roleDefinitions).filter(
-      (role) =>
-        role.userType === UserType.ADMIN &&
-        role.value !== UserRole.MANAGER &&
-        role.value !== UserRole.OPERATOR &&
-        role.value !== UserRole.VIEWER,
-    );
-
-    return {
-      success: true,
-      data: await this.withDbPermissions(adminRoles),
-    };
+    const data = await this.toRoleInfos((ut) => ut === UserType.ADMIN);
+    return { success: true, data };
   }
 
   @Get('service-provider')
   @Public()
-  @ApiOperation({
-    summary: 'Get service provider portal roles',
-    description: 'Returns only roles for service provider portal users',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Service provider roles retrieved successfully',
-  })
+  @ApiOperation({ summary: 'Get service provider portal roles' })
+  @ApiResponse({ status: 200, description: 'Service provider roles retrieved successfully' })
   async getServiceProviderRoles() {
-    const spRoles = Object.values(this.roleDefinitions).filter(
-      (role) => role.userType === UserType.SERVICE_PROVIDER,
-    );
-
-    return {
-      success: true,
-      data: await this.withDbPermissions(spRoles),
-    };
+    const data = await this.toRoleInfos((ut) => ut === UserType.SERVICE_PROVIDER, true);
+    return { success: true, data };
   }
 
   @Get('user-types')
   @Public()
-  @ApiOperation({
-    summary: 'Get all user types',
-    description: 'Returns list of available user types',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'User types retrieved successfully',
-  })
+  @ApiOperation({ summary: 'Get all user types' })
+  @ApiResponse({ status: 200, description: 'User types retrieved successfully' })
   getUserTypes() {
     return {
       success: true,

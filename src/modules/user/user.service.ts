@@ -11,13 +11,22 @@ import { User, UserStatus } from './entities/user.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { QueryUserDto } from './dto/query-user.dto';
+import { RolesService } from '../permission/roles.service';
 
 @Injectable()
 export class UserService {
   constructor(
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    private readonly rolesService: RolesService,
   ) {}
+
+  /** Reject roles that don't exist / aren't active in the roles table. */
+  private async assertRoleExists(role?: string): Promise<void> {
+    if (role && !(await this.rolesService.isValidRole(role))) {
+      throw new BadRequestException(`Unknown or inactive role: ${role}`);
+    }
+  }
 
   /**
    * Create a new user
@@ -31,6 +40,8 @@ export class UserService {
     if (existingUser) {
       throw new ConflictException('User with this email already exists');
     }
+
+    await this.assertRoleExists(createUserDto.role);
 
     const user = this.userRepository.create({
       ...createUserDto,
@@ -140,6 +151,8 @@ export class UserService {
         throw new ConflictException('User with this email already exists');
       }
     }
+
+    await this.assertRoleExists(updateUserDto.role);
 
     Object.assign(user, updateUserDto);
     user.updatedBy = updatedBy;

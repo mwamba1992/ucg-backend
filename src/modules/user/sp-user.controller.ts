@@ -50,7 +50,7 @@ export class SpUserController {
     }
 
     // Ensure role is an SP role
-    const spRoles = [UserRole.SP_ADMIN, UserRole.SP_FINANCE, UserRole.SP_OPERATOR, UserRole.SP_VIEWER];
+    const spRoles: string[] = [UserRole.SP_ADMIN, UserRole.SP_FINANCE, UserRole.SP_OPERATOR, UserRole.SP_VIEWER];
     if (createUserDto.role && !spRoles.includes(createUserDto.role)) {
       throw new BadRequestException('Invalid role for service provider user');
     }
@@ -130,7 +130,7 @@ export class SpUserController {
     }
 
     // Ensure role is an SP role if being updated
-    const spRoles = [UserRole.SP_ADMIN, UserRole.SP_FINANCE, UserRole.SP_OPERATOR, UserRole.SP_VIEWER];
+    const spRoles: string[] = [UserRole.SP_ADMIN, UserRole.SP_FINANCE, UserRole.SP_OPERATOR, UserRole.SP_VIEWER];
     if (updateUserDto.role && !spRoles.includes(updateUserDto.role)) {
       throw new BadRequestException('Invalid role for service provider user');
     }

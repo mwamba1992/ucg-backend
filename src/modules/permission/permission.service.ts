@@ -7,7 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { Permission } from './entities/permission.entity';
 import { RolePermission } from './entities/role-permission.entity';
-import { UserRole } from '../user/entities/user.entity';
+import { RolesService } from './roles.service';
 
 @Injectable()
 export class PermissionsService {
@@ -21,6 +21,7 @@ export class PermissionsService {
     private readonly permissionRepository: Repository<Permission>,
     @InjectRepository(RolePermission)
     private readonly rolePermissionRepository: Repository<RolePermission>,
+    private readonly rolesService: RolesService,
   ) {}
 
   /** Resolve a role to its granted permission codes (cached). */
@@ -58,7 +59,7 @@ export class PermissionsService {
 
   /** Replace the entire permission set for a role. */
   async setRolePermissions(role: string, codes: string[]): Promise<string[]> {
-    this.assertValidRole(role);
+    await this.assertValidRole(role);
     const permissions = await this.resolveCodes(codes);
 
     await this.rolePermissionRepository.delete({ role });
@@ -76,7 +77,7 @@ export class PermissionsService {
 
   /** Add permissions to a role (existing pairs are left untouched). */
   async addRolePermissions(role: string, codes: string[]): Promise<string[]> {
-    this.assertValidRole(role);
+    await this.assertValidRole(role);
     const permissions = await this.resolveCodes(codes);
 
     const existing = await this.rolePermissionRepository.find({ where: { role } });
@@ -97,7 +98,7 @@ export class PermissionsService {
 
   /** Remove permissions from a role. */
   async removeRolePermissions(role: string, codes: string[]): Promise<string[]> {
-    this.assertValidRole(role);
+    await this.assertValidRole(role);
     const permissions = await this.resolveCodes(codes);
 
     if (permissions.length > 0) {
@@ -120,8 +121,8 @@ export class PermissionsService {
     }
   }
 
-  private assertValidRole(role: string): void {
-    if (!Object.values(UserRole).includes(role as UserRole)) {
+  private async assertValidRole(role: string): Promise<void> {
+    if (!(await this.rolesService.isValidRole(role))) {
       throw new BadRequestException(`Unknown role: ${role}`);
     }
   }

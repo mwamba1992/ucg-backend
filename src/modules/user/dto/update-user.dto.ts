@@ -34,10 +34,10 @@ export class UpdateUserDto {
   @IsOptional()
   userType?: UserType;
 
-  @ApiProperty({ enum: UserRole, example: UserRole.ANALYST, required: false })
-  @IsEnum(UserRole)
+  @ApiProperty({ example: UserRole.ANALYST, required: false, description: 'Role name (built-in or custom)' })
+  @IsString()
   @IsOptional()
-  role?: UserRole;
+  role?: string;
 
   @ApiProperty({ enum: UserStatus, example: UserStatus.ACTIVE, required: false })
   @IsEnum(UserStatus)

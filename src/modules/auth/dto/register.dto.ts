@@ -34,8 +34,8 @@ export class RegisterDto {
   @IsOptional()
   userType?: UserType;
 
-  @ApiProperty({ enum: UserRole, example: UserRole.VIEWER, required: false })
-  @IsEnum(UserRole)
+  @ApiProperty({ example: UserRole.VIEWER, required: false, description: 'Role name (built-in or custom)' })
+  @IsString()
   @IsOptional()
-  role?: UserRole;
+  role?: string;
 }

@@ -5,6 +5,7 @@ import {
   ADDITIONAL_CATALOG_CODES,
   ROLE_DEFINITIONS,
 } from '../../modules/permission/role-definitions.constant';
+import { seedRoles } from './roles.seed';
 
 /**
  * Seeds the permission catalog and the initial role -> permission mappings.
@@ -19,6 +20,9 @@ import {
 export async function seedPermissions(dataSource: DataSource) {
   const permissionRepository = dataSource.getRepository(Permission);
   const rolePermissionRepository = dataSource.getRepository(RolePermission);
+
+  // 0. Ensure the built-in roles exist (roles table is the source of truth for valid roles).
+  await seedRoles(dataSource);
 
   // 1. Build the catalog: every code referenced by any role + the granular SP codes.
   const catalogCodes = new Set<string>(ADDITIONAL_CATALOG_CODES);
