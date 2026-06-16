@@ -22,6 +22,7 @@ import {UpdateBankAccountDto} from './dto/update-bank-account.dto';
 import {JwtAuthGuard} from '../auth/guards/jwt-auth.guard';
 import {RolesGuard} from '../auth/guards/roles.guard';
 import {CurrentUser} from '../auth/decorators/current-user.decorator';
+import {RequirePermissions} from '../auth/decorators/require-permissions.decorator';
 import {User} from '../user/entities/user.entity';
 
 @ApiTags('Service Providers')
@@ -34,6 +35,7 @@ export class ServiceProviderController {
   ) {}
 
   @Post()
+  @RequirePermissions('service-providers:create')
   @ApiOperation({ summary: 'Register a new service provider' })
   @ApiResponse({
     status: 201,
@@ -47,6 +49,7 @@ export class ServiceProviderController {
   }
 
   @Get()
+  @RequirePermissions('service-providers:read')
   @ApiOperation({ summary: 'Get all service providers with filters' })
   @ApiResponse({
     status: 200,
@@ -57,6 +60,7 @@ export class ServiceProviderController {
   }
 
   @Get('statistics')
+  @RequirePermissions('service-providers:read')
   @ApiOperation({ summary: 'Get service provider statistics' })
   @ApiResponse({
     status: 200,
@@ -67,6 +71,7 @@ export class ServiceProviderController {
   }
 
   @Get(':id')
+  @RequirePermissions('service-providers:read')
   @ApiOperation({ summary: 'Get service provider by ID' })
   @ApiParam({ name: 'id', description: 'Service provider UUID' })
   @ApiResponse({
@@ -80,6 +85,7 @@ export class ServiceProviderController {
   }
 
   @Get('code/:spCode')
+  @RequirePermissions('service-providers:read')
   @ApiOperation({ summary: 'Get service provider by SP code' })
   @ApiParam({ name: 'spCode', description: 'Service provider code (3 chars)' })
   @ApiResponse({
@@ -93,6 +99,7 @@ export class ServiceProviderController {
   }
 
   @Patch(':id')
+  @RequirePermissions('service-providers:update')
   @ApiOperation({ summary: 'Update service provider details' })
   @ApiParam({ name: 'id', description: 'Service provider UUID' })
   @ApiResponse({
@@ -109,6 +116,7 @@ export class ServiceProviderController {
   }
 
   @Post(':id/approve')
+  @RequirePermissions('service-providers:approve')
   @ApiOperation({ summary: 'Approve service provider onboarding' })
   @ApiParam({ name: 'id', description: 'Service provider UUID' })
   @ApiResponse({
@@ -126,6 +134,7 @@ export class ServiceProviderController {
   }
 
   @Post(':id/reject')
+  @RequirePermissions('service-providers:reject')
   @ApiOperation({ summary: 'Reject service provider onboarding' })
   @ApiParam({ name: 'id', description: 'Service provider UUID' })
   @ApiResponse({
@@ -142,6 +151,7 @@ export class ServiceProviderController {
   }
 
   @Patch(':id/toggle-activation')
+  @RequirePermissions('service-providers:update')
   @ApiOperation({ summary: 'Activate or deactivate service provider' })
   @ApiParam({ name: 'id', description: 'Service provider UUID' })
   @ApiResponse({
@@ -155,6 +165,7 @@ export class ServiceProviderController {
   }
 
   @Delete(':id')
+  @RequirePermissions('service-providers:delete')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Soft delete service provider' })
   @ApiParam({ name: 'id', description: 'Service provider UUID' })
@@ -170,6 +181,7 @@ export class ServiceProviderController {
   // ==================== Bank Account Endpoints ====================
 
   @Get(':id/bank-accounts')
+  @RequirePermissions('service-providers:bank-accounts:read')
   @ApiOperation({ summary: 'Get all bank accounts for a service provider' })
   @ApiParam({ name: 'id', description: 'Service provider UUID' })
   @ApiResponse({
@@ -182,6 +194,7 @@ export class ServiceProviderController {
   }
 
   @Get(':id/bank-accounts/:accountId')
+  @RequirePermissions('service-providers:bank-accounts:read')
   @ApiOperation({ summary: 'Get a specific bank account' })
   @ApiParam({ name: 'id', description: 'Service provider UUID' })
   @ApiParam({ name: 'accountId', description: 'Bank account UUID' })
@@ -198,6 +211,7 @@ export class ServiceProviderController {
   }
 
   @Post(':id/bank-accounts')
+  @RequirePermissions('service-providers:bank-accounts:manage')
   @ApiOperation({ summary: 'Add a new bank account to a service provider' })
   @ApiParam({ name: 'id', description: 'Service provider UUID' })
   @ApiResponse({
@@ -213,6 +227,7 @@ export class ServiceProviderController {
   }
 
   @Patch(':id/bank-accounts/:accountId')
+  @RequirePermissions('service-providers:bank-accounts:manage')
   @ApiOperation({ summary: 'Update a bank account' })
   @ApiParam({ name: 'id', description: 'Service provider UUID' })
   @ApiParam({ name: 'accountId', description: 'Bank account UUID' })
@@ -234,6 +249,7 @@ export class ServiceProviderController {
   }
 
   @Post(':id/bank-accounts/:accountId/set-primary')
+  @RequirePermissions('service-providers:bank-accounts:manage')
   @ApiOperation({ summary: 'Set a bank account as primary' })
   @ApiParam({ name: 'id', description: 'Service provider UUID' })
   @ApiParam({ name: 'accountId', description: 'Bank account UUID' })
@@ -253,6 +269,7 @@ export class ServiceProviderController {
   }
 
   @Delete(':id/bank-accounts/:accountId')
+  @RequirePermissions('service-providers:bank-accounts:manage')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete (deactivate) a bank account' })
   @ApiParam({ name: 'id', description: 'Service provider UUID' })

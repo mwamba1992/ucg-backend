@@ -23,6 +23,8 @@ import { AirtelModule } from './modules/airtel/airtel.module';
 import { ReportModule } from './modules/report/report.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import { RolesGuard } from './modules/auth/guards/roles.guard';
+import { PermissionsGuard } from './modules/auth/guards/permissions.guard';
+import { PermissionModule } from './modules/permission/permission.module';
 
 @Module({
   imports: [
@@ -43,6 +45,7 @@ import { RolesGuard } from './modules/auth/guards/roles.guard';
     // Authentication & Authorization modules
     AuthModule,
     UserModule,
+    PermissionModule, // Dynamic permission catalog + role mapping
 
     // Feature modules
     ServiceProviderModule,
@@ -71,6 +74,11 @@ import { RolesGuard } from './modules/auth/guards/roles.guard';
     {
       provide: APP_GUARD,
       useClass: RolesGuard,
+    },
+    // Apply Permissions guard globally (enforces @RequirePermissions; no-op otherwise)
+    {
+      provide: APP_GUARD,
+      useClass: PermissionsGuard,
     },
   ],
 })

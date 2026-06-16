@@ -6,11 +6,13 @@ import { SpUserController } from './sp-user.controller';
 import { RolesController } from './roles.controller';
 import { User } from './entities/user.entity';
 import { NotificationModule } from '../notification/notification.module';
+import { PermissionModule } from '../permission/permission.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([User]),
     NotificationModule,
+    PermissionModule,
   ],
   controllers: [UserController, SpUserController, RolesController],
   providers: [UserService],
