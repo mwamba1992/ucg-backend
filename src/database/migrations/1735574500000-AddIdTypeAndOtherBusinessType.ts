@@ -2,7 +2,16 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class AddIdTypeAndOtherBusinessType1735574500000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
-    // Update existing service provider types
+    // Convert the column to VARCHAR FIRST so the data migration below operates on
+    // plain text. Doing the UPDATEs while the column is still an enum makes Postgres
+    // cast literals like 'MFI' to the enum type (which lacks that label) and fail —
+    // even when no rows match, because the cast happens at query-planning time.
+    await queryRunner.query(`
+      ALTER TABLE "service_providers"
+      ALTER COLUMN "businessType" TYPE VARCHAR(50)
+    `);
+
+    // Update existing service provider types (now plain text — no enum casting)
     await queryRunner.query(`
       UPDATE "service_providers"
       SET "businessType" = 'MICROFINANCE'
@@ -16,11 +25,6 @@ export class AddIdTypeAndOtherBusinessType1735574500000 implements MigrationInte
     `);
 
     // Recreate the enum with new values
-    await queryRunner.query(`
-      ALTER TABLE "service_providers"
-      ALTER COLUMN "businessType" TYPE VARCHAR(50)
-    `);
-
     await queryRunner.query(`
       DROP TYPE IF EXISTS "service_provider_businesstype_enum"
     `);
