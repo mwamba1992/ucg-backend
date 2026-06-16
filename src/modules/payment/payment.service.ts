@@ -308,6 +308,7 @@ export class PaymentService {
           spSettings.webhookUrl,
           spSettings.webhookSecret || null,
           {
+
             event: 'payment.received',
             transactionId: savedPayment.id,
             referenceNumber: reference.referenceNumber,
