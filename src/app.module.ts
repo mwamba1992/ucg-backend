@@ -23,9 +23,13 @@ import { AirtelModule } from './modules/airtel/airtel.module';
 import { ReportModule } from './modules/report/report.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import { RolesGuard } from './modules/auth/guards/roles.guard';
+import { LoggingModule } from './common/logging/logging.module';
 
 @Module({
   imports: [
+    // Per-channel daily file logging (global)
+    LoggingModule,
+
     // Configuration module
     ConfigModule.forRoot({
       isGlobal: true,

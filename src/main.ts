@@ -3,10 +3,13 @@ import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { Transport, MicroserviceOptions } from '@nestjs/microservices';
 import { AppModule } from './app.module';
+import { WinstonLoggerService } from './common/logging/winston-logger.service';
 import * as bodyParser from 'body-parser';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // Buffer early logs until our file logger is attached, then route everything through it.
+  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  app.useLogger(app.get(WinstonLoggerService));
 
   // Connect RabbitMQ microservice for reference generation queue
   app.connectMicroservice<MicroserviceOptions>({
