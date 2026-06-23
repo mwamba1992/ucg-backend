@@ -570,7 +570,7 @@ export class ServiceProviderService {
         // Send randomly generated password via SMS
         await this.notificationService.sendSMS(
           serviceProvider.phoneNumber,
-          `Welcome to UCG! Your account has been created.\n\nEmail: ${serviceProvider.email}\nTemporary Password: ${randomPassword}\n\nIMPORTANT: You must change this password on first login.\n\nLogin at: https://sp.ucg.co.tz`,
+          `Welcome to UCG! Your account has been created.\n\nEmail: ${serviceProvider.email}\nTemporary Password: ${randomPassword}\n\nIMPORTANT: You must change this password on first login.\n\nLogin at: https://collections.mhbbank.co.tz`,
           'UCG - Account Created',
         );
         this.logger.log(`Temporary password sent via SMS to: ${serviceProvider.phoneNumber}`);
