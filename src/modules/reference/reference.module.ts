@@ -13,12 +13,14 @@ import { ReferenceConsumer } from './reference.consumer';
 import { NotificationConsumer } from './notification.consumer';
 import { AdminNotificationController } from './admin-notification.controller';
 import { NotificationModule } from '../notification/notification.module';
+import { ServiceProviderModule } from '../service-provider/service-provider.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([PaymentReference, ReferenceLineItem, ReferenceBatch, ServiceProvider]),
     HttpModule,
     NotificationModule,
+    ServiceProviderModule,
   ],
   controllers: [ReferenceController, SpReferenceController, ReferenceConsumer, NotificationConsumer, AdminNotificationController],
   providers: [ReferenceService, ReferenceProducer],

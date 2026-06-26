@@ -333,6 +333,61 @@ export class ServiceProviderService {
   }
 
   /**
+   * Apply external reference-query integration config onto an SP entity (Flow A).
+   *
+   * Fields travel together: an SP that has a reference prefix must also have a
+   * query URL, otherwise we'd match a reference but have nowhere to call. The
+   * prefix must be unique so an incoming reference maps to exactly one SP.
+   * Only assigns fields that are present in the DTO so partial updates of other
+   * attributes never clear an existing integration config.
+   */
+  private async applyReferenceQueryConfig(
+    serviceProvider: ServiceProvider,
+    updateDto: UpdateServiceProviderDto,
+    id: string,
+  ): Promise<void> {
+    if (
+      updateDto.spReferencePrefix === undefined &&
+      updateDto.referenceQueryUrl === undefined &&
+      updateDto.outboundApiKey === undefined
+    ) {
+      return; // nothing to change
+    }
+
+    if (updateDto.spReferencePrefix !== undefined) {
+      serviceProvider.spReferencePrefix = updateDto.spReferencePrefix?.trim() || null;
+    }
+    if (updateDto.referenceQueryUrl !== undefined) {
+      serviceProvider.referenceQueryUrl = updateDto.referenceQueryUrl?.trim() || null;
+    }
+    if (updateDto.outboundApiKey !== undefined) {
+      serviceProvider.outboundApiKey = updateDto.outboundApiKey?.trim() || null;
+    }
+
+    // Guard: prefix and URL must be configured together.
+    if (serviceProvider.spReferencePrefix && !serviceProvider.referenceQueryUrl) {
+      throw new BadRequestException(
+        'referenceQueryUrl is required when spReferencePrefix is set',
+      );
+    }
+
+    // Guard: prefix must be unique across SPs.
+    if (serviceProvider.spReferencePrefix) {
+      const clash = await this.serviceProviderRepository.findOne({
+        where: {
+          spReferencePrefix: serviceProvider.spReferencePrefix,
+          id: Not(id),
+        },
+      });
+      if (clash) {
+        throw new BadRequestException(
+          `Reference prefix "${serviceProvider.spReferencePrefix}" is already used by another service provider`,
+        );
+      }
+    }
+  }
+
+  /**
    * Update service provider
    */
   async update(
@@ -424,6 +479,10 @@ export class ServiceProviderService {
         rejectionReason: updateDto.rejectionReason,
       });
       this.logger.log(`✅ Main fields updated`);
+
+      // External reference-query integration config (Flow A).
+      // Applied only when present so unrelated updates never wipe it.
+      await this.applyReferenceQueryConfig(serviceProvider, updateDto, id);
 
       // Save main entity FIRST to avoid cascade issues
       this.logger.log(`💾 Saving main service provider entity...`);

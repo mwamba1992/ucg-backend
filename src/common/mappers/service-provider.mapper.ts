@@ -40,6 +40,9 @@ export class ServiceProviderMapper {
     dto.traVerified = entity.traVerified;
     dto.isActive = entity.isActive;
     dto.apiKey = entity.apiKey;
+    dto.spReferencePrefix = entity.spReferencePrefix;
+    dto.referenceQueryUrl = entity.referenceQueryUrl;
+    dto.hasOutboundApiKey = !!entity.outboundApiKey;
     dto.createdAt = entity.createdAt;
     dto.updatedAt = entity.updatedAt;
 
