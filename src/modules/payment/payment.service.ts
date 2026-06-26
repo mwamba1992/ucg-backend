@@ -153,6 +153,14 @@ export class PaymentService {
    * @param pspUser - Optional PSP user for FSP authorization validation
    */
   async createPayment(dto: CreatePaymentDto, pspUser?: User): Promise<Payment> {
+    // Incoming payment entry log (every path funnels through here: API, channels, internal).
+    this.logger.log('📥 ========== INCOMING PAYMENT ==========');
+    this.logger.log(
+      `📥 Incoming: ref=${dto.referenceNumber} | amount=${dto.amountPaid} | ` +
+        `channel=${dto.paymentChannel} | fsp=${dto.fspCode} | payer=${dto.payerName} (${dto.payerPhone})`,
+    );
+    this.logger.log(`📥 Payload: ${JSON.stringify(dto)}`);
+
     // Validate PSP user is authorized to use this FSP
     this.validatePspFspAuthorization(pspUser, dto.fspCode);
 

@@ -146,6 +146,17 @@ export class ServiceProviderResponseDto {
   @ApiPropertyOptional()
   apiKey?: string;
 
+  // External reference-query integration (Flow A). outboundApiKey is a secret
+  // and is never returned; hasOutboundApiKey indicates whether one is set.
+  @ApiPropertyOptional({ description: "Leading characters of the SP's own references" })
+  spReferencePrefix?: string;
+
+  @ApiPropertyOptional({ description: 'SP base URL we call to query references' })
+  referenceQueryUrl?: string;
+
+  @ApiPropertyOptional({ description: 'Whether an outbound API key is configured for this SP' })
+  hasOutboundApiKey?: boolean;
+
   @ApiProperty({ type: ContactResponseDto })
   contact: ContactResponseDto;
 

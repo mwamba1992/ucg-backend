@@ -110,6 +110,19 @@ export class ServiceProvider {
   @Column({ length: 100, unique: true, nullable: true })
   apiKey: string;
 
+  // External reference-query integration (Flow A: we query the SP's own system).
+  // Only populated for SPs that expose their own references; null = internal SP
+  // that uses UCG-generated references (XXX-YYYYYYY-ZZZ) validated locally.
+  @Column({ length: 10, unique: true, nullable: true })
+  @Index()
+  spReferencePrefix: string; // Leading characters of the SP's own references, used to route lookups
+
+  @Column({ type: 'text', nullable: true })
+  referenceQueryUrl: string; // SP base URL, e.g. https://pay.someschool.co.tz
+
+  @Column({ type: 'text', nullable: true })
+  outboundApiKey: string; // Bearer token the SP issued us for calling their endpoint
+
   @Column({ type: 'boolean', default: false })
   isActive: boolean;
 

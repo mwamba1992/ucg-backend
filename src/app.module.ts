@@ -25,9 +25,13 @@ import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import { RolesGuard } from './modules/auth/guards/roles.guard';
 import { PermissionsGuard } from './modules/auth/guards/permissions.guard';
 import { PermissionModule } from './modules/permission/permission.module';
+import { LoggingModule } from './common/logging/logging.module';
 
 @Module({
   imports: [
+    // Per-channel daily file logging (global)
+    LoggingModule,
+
     // Configuration module
     ConfigModule.forRoot({
       isGlobal: true,

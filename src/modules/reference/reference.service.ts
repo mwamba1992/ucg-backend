@@ -20,6 +20,7 @@ import { BulkGenerateReferenceDto } from './dto/bulk-generate-reference.dto';
 import { ReferenceProducer } from './reference.producer';
 import { ServiceProvider } from '../service-provider/entities/service-provider.entity';
 import { NotificationService } from '../notification/notification.service';
+import { SpReferenceQueryService } from '../service-provider/sp-reference-query.service';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -38,6 +39,7 @@ export class ReferenceService {
     @Inject(forwardRef(() => ReferenceProducer))
     private readonly referenceProducer: ReferenceProducer,
     private readonly notificationService: NotificationService,
+    private readonly spReferenceQueryService: SpReferenceQueryService,
   ) {}
 
   /**
@@ -364,6 +366,25 @@ export class ReferenceService {
    * Validate a reference
    */
   async validate(referenceNumber: string, serviceProviderId?: string) {
+    // External SPs first: if the reference matches a configured SP prefix, it
+    // lives in the SP's own system (different format from ours), so query them
+    // instead of validating against our database.
+    const externalSp = await this.spReferenceQueryService.findSpByReference(referenceNumber);
+    if (externalSp) {
+      const result = await this.spReferenceQueryService.queryReference(referenceNumber);
+      return {
+        isValid: result.isValid,
+        referenceNumber,
+        status: result.status ?? (result.isValid ? 'ACTIVE' : 'INVALID'),
+        reason: result.isValid ? 'Valid reference' : 'Reference not valid at service provider',
+        source: 'external',
+        spCode: result.spCode,
+        customerName: result.customerName,
+        amount: result.amount,
+        description: result.description,
+      };
+    }
+
     // First check format
     if (!this.validateReferenceFormat(referenceNumber)) {
       return {
