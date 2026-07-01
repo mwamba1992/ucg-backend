@@ -196,20 +196,21 @@ export class PaymentReference {
         };
 
       case PaymentOption.PARTIAL:
-        // Single >= invoice OR multiple < invoice with last >= remaining
-        if (this.installmentCount === 0) {
-          // First payment
-          return { allowed: true }; // Any amount accepted
-        } else {
-          // Subsequent payments
-          if (amount >= remaining) {
-            return { allowed: true }; // Final payment
-          }
+        // Pay in any number of installments, any amount, as long as a balance
+        // remains. Only overpayment (more than the outstanding balance) is rejected.
+        if (remaining <= 0) {
           return {
             allowed: false,
-            reason: `PARTIAL option requires final payment >= ${remaining}`,
+            reason: 'Reference is already fully paid',
           };
         }
+        if (amount > remaining) {
+          return {
+            allowed: false,
+            reason: `PARTIAL payment ${amount} exceeds remaining balance ${remaining}`,
+          };
+        }
+        return { allowed: true };
 
       case PaymentOption.PRECISE:
         // Single installment exactly = invoice amount
