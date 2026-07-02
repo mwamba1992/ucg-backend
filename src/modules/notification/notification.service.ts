@@ -239,6 +239,25 @@ export class NotificationService {
   }
 
   /**
+   * Notify the customer that an existing payment reference has been updated.
+   */
+  async notifyReferenceUpdated(
+    email: string,
+    phoneNumber: string,
+    customerName: string,
+    referenceNumber: string,
+    amount: number,
+    description: string,
+    businessName: string,
+  ): Promise<void> {
+    const subject = 'Payment Reference Updated';
+    const message = `Dear ${customerName},\n\nYour payment reference has been updated.\n\nReference Number: ${referenceNumber}\nAmount: TZS ${amount.toLocaleString()}\nDescription: ${description}\nService Provider: ${businessName}\n\nPlease use this reference number when making your payment.\n\nThank you.`;
+
+    // Send SMS to customer
+    await this.sendSMS(phoneNumber, message, subject);
+  }
+
+  /**
    * Send batch reference completion notification
    */
   async notifyBatchReferenceComplete(

@@ -490,7 +490,35 @@ export class ReferenceService {
       reference.expiresAt = new Date(expiresAt);
     }
 
-    return await this.referenceRepository.save(reference);
+    const saved = await this.referenceRepository.save(reference);
+
+    // Resend the reference notification to the customer when a customer-facing
+    // field changed (amount, description, name, phone, expiry). Metadata-only
+    // edits don't notify. Failure to notify must not fail the edit.
+    const customerFacingChanged =
+      updateDto.customerName !== undefined ||
+      updateDto.customerPhone !== undefined ||
+      updateDto.amount !== undefined ||
+      updateDto.description !== undefined ||
+      updateDto.expiresAt !== undefined;
+
+    if (customerFacingChanged && reference.serviceProvider) {
+      try {
+        await this.notificationService.notifyReferenceUpdated(
+          reference.serviceProvider.email,
+          saved.customerPhone,
+          saved.customerName,
+          saved.referenceNumber,
+          Number(saved.amount),
+          saved.description || 'Payment',
+          reference.serviceProvider.businessName,
+        );
+      } catch (error) {
+        this.logger.error(`Failed to send reference update notification: ${error.message}`);
+      }
+    }
+
+    return saved;
   }
 
   /**
