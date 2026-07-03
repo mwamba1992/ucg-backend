@@ -409,6 +409,18 @@ export class AirtelService {
         });
       }
 
+      // Reject expired / non-active references, consistent with billfetch & validate.
+      if (!reference.isValid()) {
+        return this.buildResponseXml({
+          TYPE: 'LOOKUPDETAILSRESPONSE',
+          CUSTOMERREFERENCEID: dto.CUSTOMERREFERENCEID,
+          RESULT: AirtelResult.FAILURE,
+          ERRORCODE: AirtelErrorCode.ACCOUNT_LOCKED,
+          ERRORDESC: reference.isExpired() ? 'Reference expired' : `Reference ${reference.status}`,
+          FLAG: 'N',
+        });
+      }
+
       const remainingAmount = reference.amount - (reference.totalPaid || 0);
 
       return this.buildResponseXml({
