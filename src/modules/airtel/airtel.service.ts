@@ -10,18 +10,14 @@ import {
 } from './entities/airtel-transaction.entity';
 import { AirtelConfig } from './entities/airtel-config.entity';
 import {
-  AirtelValidateRequestDto,
-  AirtelValidateResponseDto,
-  AirtelProcessRequestDto,
-  AirtelProcessResponseDto,
+  AirtelC2BRequestDto,
   AirtelEnquiryRequestDto,
-  AirtelEnquiryResponseDto,
   AirtelBillFetchRequestDto,
   AirtelBillFetchResponseDto,
   AirtelLookupRequestDto,
   AirtelLookupResponseDto,
+  AirtelStatus,
   AirtelErrorCode,
-  AirtelResult,
 } from './dto/airtel-notification.dto';
 import {
   AirtelPaymentMessage,
@@ -88,48 +84,39 @@ export class AirtelService {
     try {
       const command = await this.parseXmlRequest(xmlBody);
 
-      const dto: AirtelValidateRequestDto = {
+      const dto: AirtelC2BRequestDto = {
         TYPE: command.TYPE,
-        TXNID: command.TXNID,
-        MSISDN: command.MSISDN,
+        CUSTOMERMSISDN: command.CUSTOMERMSISDN,
+        MERCHANTMSISDN: command.MERCHANTMSISDN,
+        CUSTOMERNAME: command.CUSTOMERNAME,
         AMOUNT: parseFloat(command.AMOUNT),
-        COMPANYNAME: command.COMPANYNAME,
-        CUSTOMERREFERENCEID: command.CUSTOMERREFERENCEID,
-        SENDERNAME: command.SENDERNAME,
+        PIN: command.PIN,
+        REFERENCE: command.REFERENCE,
+        USERNAME: command.USERNAME,
+        PASSWORD: command.PASSWORD,
+        REFERENCE1: command.REFERENCE1,
       };
 
       this.logger.log(
-        `Airtel Validate: TxnId=${dto.TXNID}, Ref=${dto.CUSTOMERREFERENCEID}, Amount=${dto.AMOUNT}`,
+        `Airtel Validate: Ref=${dto.REFERENCE}, AirtelTxnId=${dto.REFERENCE1}, Amount=${dto.AMOUNT}, MSISDN=${dto.CUSTOMERMSISDN}`,
       );
 
-      // Validate required fields
-      if (!dto.TXNID || !dto.CUSTOMERREFERENCEID || !dto.AMOUNT || dto.AMOUNT <= 0) {
-        return this.buildValidateResponse(dto, AirtelResult.FAILURE, AirtelErrorCode.GENERAL_ERROR, 'Missing required fields');
+      // Required fields: Airtel txn id, bill reference, positive amount
+      if (!dto.REFERENCE1 || !dto.REFERENCE || !dto.AMOUNT || dto.AMOUNT <= 0) {
+        return this.buildStatusResponse(AirtelStatus.BAD_REQUEST, 'Missing required fields');
       }
 
-      // Validate reference
-      const validation = await this.validateReference(dto.CUSTOMERREFERENCEID, dto.AMOUNT);
+      // Validate reference against our records
+      const validation = await this.validateReference(dto.REFERENCE, dto.AMOUNT);
 
       if (!validation.valid) {
-        return this.buildValidateResponse(dto, AirtelResult.FAILURE, validation.errorCode, validation.errorDescription);
+        return this.buildStatusResponse(AirtelStatus.BAD_REQUEST, validation.errorDescription);
       }
 
-      const reference = validation.reference;
-      const content = `Customer: ${reference.customerName || 'N/A'}|Amount: TZS ${dto.AMOUNT}|Ref: ${dto.CUSTOMERREFERENCEID}`;
-
-      return this.buildValidateResponse(dto, AirtelResult.SUCCESS, AirtelErrorCode.SUCCESS, 'Validation successful', content);
+      return this.buildStatusResponse(AirtelStatus.OK, 'Validation successful');
     } catch (error) {
       this.logger.error(`Airtel Validate error: ${error.message}`, error.stack);
-      return this.buildResponseXml({
-        TYPE: 'VALIDATETXNRESPONSE',
-        TXNID: '',
-        REFID: '',
-        RESULT: AirtelResult.FAILURE,
-        ERRORCODE: AirtelErrorCode.GENERAL_ERROR,
-        ERRORDESC: 'Internal error',
-        MSISDN: '',
-        FLAG: 'N',
-      });
+      return this.buildStatusResponse(AirtelStatus.BAD_REQUEST, 'Internal error');
     }
   }
 
@@ -140,35 +127,39 @@ export class AirtelService {
     try {
       const command = await this.parseXmlRequest(xmlBody);
 
-      const dto: AirtelProcessRequestDto = {
+      const dto: AirtelC2BRequestDto = {
         TYPE: command.TYPE,
-        TXNID: command.TXNID,
-        MSISDN: command.MSISDN,
+        CUSTOMERMSISDN: command.CUSTOMERMSISDN,
+        MERCHANTMSISDN: command.MERCHANTMSISDN,
+        CUSTOMERNAME: command.CUSTOMERNAME,
         AMOUNT: parseFloat(command.AMOUNT),
-        COMPANYNAME: command.COMPANYNAME,
-        CUSTOMERREFERENCEID: command.CUSTOMERREFERENCEID,
-        SENDERNAME: command.SENDERNAME,
+        PIN: command.PIN,
+        REFERENCE: command.REFERENCE,
+        USERNAME: command.USERNAME,
+        PASSWORD: command.PASSWORD,
+        REFERENCE1: command.REFERENCE1,
+        REFERENCE2: command.REFERENCE2,
       };
 
       this.logger.log(
-        `Airtel Process: TxnId=${dto.TXNID}, Ref=${dto.CUSTOMERREFERENCEID}, Amount=${dto.AMOUNT}, MSISDN=${dto.MSISDN}`,
+        `Airtel Process: AirtelTxnId=${dto.REFERENCE1}, Ref=${dto.REFERENCE}, Amount=${dto.AMOUNT}, MSISDN=${dto.CUSTOMERMSISDN}`,
       );
 
-      // Validate required fields
-      if (!dto.TXNID || !dto.MSISDN || !dto.CUSTOMERREFERENCEID || !dto.AMOUNT || dto.AMOUNT <= 0) {
-        return this.buildProcessResponse(dto, AirtelResult.FAILURE, AirtelErrorCode.GENERAL_ERROR, 'Missing required fields');
+      // Required fields: Airtel txn id, payer msisdn, bill reference, positive amount
+      if (!dto.REFERENCE1 || !dto.CUSTOMERMSISDN || !dto.REFERENCE || !dto.AMOUNT || dto.AMOUNT <= 0) {
+        return this.buildProcessResponse(AirtelStatus.BAD_REQUEST, '', 'Missing required fields');
       }
 
-      // Check for duplicate transaction
-      const isDuplicate = await this.checkDuplicate(dto.TXNID);
+      // Check for duplicate transaction (keyed on Airtel's transaction id)
+      const isDuplicate = await this.checkDuplicate(dto.REFERENCE1);
       if (isDuplicate) {
-        this.logger.log(`Duplicate Airtel transaction: ${dto.TXNID}`);
-        const existing = await this.getTransaction(dto.TXNID);
+        this.logger.log(`Duplicate Airtel transaction: ${dto.REFERENCE1}`);
+        const existing = await this.getTransaction(dto.REFERENCE1);
+        const completed = existing?.status === AirtelTransactionStatus.COMPLETED;
         return this.buildProcessResponse(
-          dto,
-          existing?.status === AirtelTransactionStatus.COMPLETED ? AirtelResult.SUCCESS : AirtelResult.FAILURE,
-          existing?.resultCode || AirtelErrorCode.SUCCESS,
-          existing?.status === AirtelTransactionStatus.COMPLETED ? 'Transaction already processed' : 'Transaction already received',
+          completed ? AirtelStatus.OK : AirtelStatus.BAD_REQUEST,
+          existing?.refId || '',
+          completed ? 'Transaction already processed' : 'Transaction already received',
         );
       }
 
@@ -177,34 +168,24 @@ export class AirtelService {
 
       // Process payment
       const message: AirtelPaymentMessage = {
-        txnId: dto.TXNID,
-        msisdn: dto.MSISDN,
+        txnId: dto.REFERENCE1,
+        msisdn: dto.CUSTOMERMSISDN,
         amount: dto.AMOUNT,
-        companyName: dto.COMPANYNAME,
-        customerReferenceId: dto.CUSTOMERREFERENCEID,
-        senderName: dto.SENDERNAME,
+        companyName: dto.MERCHANTMSISDN,
+        customerReferenceId: dto.REFERENCE,
+        senderName: dto.CUSTOMERNAME,
       };
 
       const result = await this.processPayment(message);
 
       if (result.success) {
-        const content = `Payment received. Ref: ${result.refId}`;
-        return this.buildProcessResponse(dto, AirtelResult.SUCCESS, AirtelErrorCode.SUCCESS, 'Payment processed successfully', content, result.refId);
+        return this.buildProcessResponse(AirtelStatus.OK, result.refId || '', 'Payment processed successfully');
       } else {
-        return this.buildProcessResponse(dto, AirtelResult.FAILURE, result.errorCode, result.errorDescription);
+        return this.buildProcessResponse(AirtelStatus.BAD_REQUEST, '', result.errorDescription || 'Payment failed');
       }
     } catch (error) {
       this.logger.error(`Airtel Process error: ${error.message}`, error.stack);
-      return this.buildResponseXml({
-        TYPE: 'PROCESSTXNRESPONSE',
-        TXNID: '',
-        REFID: '',
-        RESULT: AirtelResult.FAILURE,
-        ERRORCODE: AirtelErrorCode.GENERAL_ERROR,
-        ERRORDESC: 'Internal error',
-        MSISDN: '',
-        FLAG: 'N',
-      });
+      return this.buildProcessResponse(AirtelStatus.BAD_REQUEST, '', 'Internal error');
     }
   }
 
@@ -216,67 +197,34 @@ export class AirtelService {
       const command = await this.parseXmlRequest(xmlBody);
 
       const dto: AirtelEnquiryRequestDto = {
-        TYPE: command.TYPE,
         TXNID: command.TXNID,
         MSISDN: command.MSISDN,
-        COMPANYNAME: command.COMPANYNAME,
       };
 
-      this.logger.log(`Airtel Enquiry: TxnId=${dto.TXNID}`);
+      this.logger.log(`Airtel Enquiry: AirtelTxnId=${dto.TXNID}, MSISDN=${dto.MSISDN}`);
 
       if (!dto.TXNID) {
-        return this.buildResponseXml({
-          TYPE: 'TXNENQUIRYRESPONSE',
-          TXNID: '',
-          REFID: '',
-          RESULT: AirtelResult.FAILURE,
-          ERRORCODE: AirtelErrorCode.GENERAL_ERROR,
-          ERRORDESC: 'TXNID is required',
-          FLAG: 'N',
-        });
+        return this.buildEnquiryResponse(AirtelStatus.BAD_REQUEST, '', 'TXNID is required');
       }
 
       const transaction = await this.getTransaction(dto.TXNID);
 
       if (!transaction) {
-        return this.buildResponseXml({
-          TYPE: 'TXNENQUIRYRESPONSE',
-          TXNID: dto.TXNID,
-          REFID: '',
-          RESULT: AirtelResult.FAILURE,
-          ERRORCODE: AirtelErrorCode.INVALID_REFERENCE,
-          ERRORDESC: 'Transaction not found',
-          FLAG: 'N',
-        });
+        return this.buildEnquiryResponse(AirtelStatus.NOT_FOUND, '', 'Transaction not found');
       }
 
       const isCompleted = transaction.status === AirtelTransactionStatus.COMPLETED;
-      const content = isCompleted
-        ? `Payment completed. Ref: ${transaction.refId}`
-        : `Status: ${transaction.status}`;
 
-      return this.buildResponseXml({
-        TYPE: 'TXNENQUIRYRESPONSE',
-        TXNID: transaction.txnId,
-        REFID: transaction.refId || '',
-        RESULT: isCompleted ? AirtelResult.SUCCESS : AirtelResult.FAILURE,
-        ERRORCODE: transaction.resultCode || (isCompleted ? AirtelErrorCode.SUCCESS : AirtelErrorCode.GENERAL_ERROR),
-        ERRORDESC: isCompleted ? 'Transaction completed' : transaction.errorDescription || transaction.status,
-        MSISDN: transaction.customerPhone,
-        FLAG: 'Y',
-        CONTENT: content,
-      });
+      return this.buildEnquiryResponse(
+        isCompleted ? AirtelStatus.OK : AirtelStatus.BAD_REQUEST,
+        transaction.refId || '',
+        isCompleted
+          ? 'Transaction completed'
+          : transaction.errorDescription || String(transaction.status),
+      );
     } catch (error) {
       this.logger.error(`Airtel Enquiry error: ${error.message}`, error.stack);
-      return this.buildResponseXml({
-        TYPE: 'TXNENQUIRYRESPONSE',
-        TXNID: '',
-        REFID: '',
-        RESULT: AirtelResult.FAILURE,
-        ERRORCODE: AirtelErrorCode.GENERAL_ERROR,
-        ERRORDESC: 'Internal error',
-        FLAG: 'N',
-      });
+      return this.buildEnquiryResponse(AirtelStatus.BAD_REQUEST, '', 'Internal error');
     }
   }
 
@@ -289,82 +237,66 @@ export class AirtelService {
 
       const dto: AirtelBillFetchRequestDto = {
         TYPE: command.TYPE,
-        CUSTOMERREFERENCEID: command.CUSTOMERREFERENCEID,
-        MSISDN: command.MSISDN,
-        COMPANYNAME: command.COMPANYNAME,
+        CUSTOMERMSISDN: command.CUSTOMERMSISDN,
+        USERNAME: command.USERNAME,
+        PASSWORD: command.PASSWORD,
+        CUSTOMERREF: command.CUSTOMERREF,
       };
 
-      this.logger.log(`Airtel BillFetch: Ref=${dto.CUSTOMERREFERENCEID}`);
+      this.logger.log(`Airtel BillFetch: Ref=${dto.CUSTOMERREF}, MSISDN=${dto.CUSTOMERMSISDN}`);
 
-      if (!dto.CUSTOMERREFERENCEID) {
+      if (!dto.CUSTOMERREF) {
         return this.buildResponseXml({
-          TYPE: 'BILLFETCHRESPONSE',
-          CUSTOMERREFERENCEID: '',
-          RESULT: AirtelResult.FAILURE,
-          ERRORCODE: AirtelErrorCode.GENERAL_ERROR,
-          ERRORDESC: 'CUSTOMERREFERENCEID is required',
-          FLAG: 'N',
+          STATUS: AirtelStatus.NOT_FOUND,
+          MESSAGE: 'CUSTOMERREF is required',
         });
       }
 
-      const reference = await this.referenceService.findByReferenceNumber(dto.CUSTOMERREFERENCEID);
+      const reference = await this.referenceService.findByReferenceNumber(dto.CUSTOMERREF);
 
       if (!reference) {
         return this.buildResponseXml({
-          TYPE: 'BILLFETCHRESPONSE',
-          CUSTOMERREFERENCEID: dto.CUSTOMERREFERENCEID,
-          RESULT: AirtelResult.FAILURE,
-          ERRORCODE: AirtelErrorCode.INVALID_REFERENCE,
-          ERRORDESC: 'Reference not found',
-          FLAG: 'N',
+          STATUS: AirtelStatus.NOT_FOUND,
+          MESSAGE: 'Reference not found',
         });
       }
 
       if (!reference.isValid()) {
         return this.buildResponseXml({
-          TYPE: 'BILLFETCHRESPONSE',
-          CUSTOMERREFERENCEID: dto.CUSTOMERREFERENCEID,
-          RESULT: AirtelResult.FAILURE,
-          ERRORCODE: AirtelErrorCode.ACCOUNT_LOCKED,
-          ERRORDESC: `Reference ${reference.status}`,
-          FLAG: 'N',
+          STATUS: AirtelStatus.NOT_FOUND,
+          MESSAGE: reference.isExpired() ? 'Reference expired' : `Reference ${reference.status}`,
         });
       }
 
       if (reference.isFullyPaid() && reference.paymentOption !== PaymentOption.PERPETUAL) {
         return this.buildResponseXml({
-          TYPE: 'BILLFETCHRESPONSE',
-          CUSTOMERREFERENCEID: dto.CUSTOMERREFERENCEID,
-          RESULT: AirtelResult.FAILURE,
-          ERRORCODE: AirtelErrorCode.ACCOUNT_LOCKED,
-          ERRORDESC: 'Reference already fully paid',
-          FLAG: 'N',
+          STATUS: AirtelStatus.NOT_FOUND,
+          MESSAGE: 'Reference already fully paid',
         });
       }
 
-      const remainingAmount = reference.amount - (reference.totalPaid || 0);
+      const remainingAmount = reference.getRemainingAmount();
+      const { firstName, lastName } = this.splitName(reference.customerName);
+      const dueDate = this.formatDate(reference.expiresAt);
 
-      return this.buildResponseXml({
-        TYPE: 'BILLFETCHRESPONSE',
-        CUSTOMERREFERENCEID: dto.CUSTOMERREFERENCEID,
-        RESULT: AirtelResult.SUCCESS,
-        ERRORCODE: AirtelErrorCode.SUCCESS,
-        ERRORDESC: 'Bill found',
+      const response: AirtelBillFetchResponseDto = {
+        STATUS: AirtelStatus.OK,
+        FIRSTNAME: firstName,
+        LASTNAME: lastName,
         AMOUNT: String(remainingAmount),
-        CUSTOMERNAME: reference.customerName || 'N/A',
-        DESCRIPTION: reference.description || 'Payment',
-        FLAG: 'Y',
-        CONTENT: `Bill for ${reference.customerName || 'N/A'}|Amount: TZS ${remainingAmount}`,
-      });
+        CURRENCY: reference.currency || 'TZS',
+        MESSAGE: reference.description || 'Bill found',
+      };
+      if (dueDate) {
+        response.DUEDATE = dueDate;
+      }
+
+      return this.buildResponseXml(response);
     } catch (error) {
       this.logger.error(`Airtel BillFetch error: ${error.message}`, error.stack);
       return this.buildResponseXml({
-        TYPE: 'BILLFETCHRESPONSE',
-        CUSTOMERREFERENCEID: '',
-        RESULT: AirtelResult.FAILURE,
-        ERRORCODE: AirtelErrorCode.GENERAL_ERROR,
-        ERRORDESC: 'Internal error',
-        FLAG: 'N',
+        STATUS: AirtelStatus.NOT_FOUND,
+        MESSAGE: 'Internal error',
       });
     }
   }
@@ -378,72 +310,53 @@ export class AirtelService {
 
       const dto: AirtelLookupRequestDto = {
         TYPE: command.TYPE,
-        CUSTOMERREFERENCEID: command.CUSTOMERREFERENCEID,
-        MSISDN: command.MSISDN,
-        COMPANYNAME: command.COMPANYNAME,
+        CUSTOMERMSISDN: command.CUSTOMERMSISDN,
+        USERNAME: command.USERNAME,
+        PASSWORD: command.PASSWORD,
+        CUSTOMERREF: command.CUSTOMERREF,
       };
 
-      this.logger.log(`Airtel Lookup: Ref=${dto.CUSTOMERREFERENCEID}`);
+      this.logger.log(`Airtel Lookup: Ref=${dto.CUSTOMERREF}, MSISDN=${dto.CUSTOMERMSISDN}`);
 
-      if (!dto.CUSTOMERREFERENCEID) {
+      if (!dto.CUSTOMERREF) {
         return this.buildResponseXml({
-          TYPE: 'LOOKUPDETAILSRESPONSE',
-          CUSTOMERREFERENCEID: '',
-          RESULT: AirtelResult.FAILURE,
-          ERRORCODE: AirtelErrorCode.GENERAL_ERROR,
-          ERRORDESC: 'CUSTOMERREFERENCEID is required',
-          FLAG: 'N',
+          STATUS: AirtelStatus.NOT_FOUND,
+          MESSAGE: 'CUSTOMERREF is required',
         });
       }
 
-      const reference = await this.referenceService.findByReferenceNumber(dto.CUSTOMERREFERENCEID);
+      const reference = await this.referenceService.findByReferenceNumber(dto.CUSTOMERREF);
 
       if (!reference) {
         return this.buildResponseXml({
-          TYPE: 'LOOKUPDETAILSRESPONSE',
-          CUSTOMERREFERENCEID: dto.CUSTOMERREFERENCEID,
-          RESULT: AirtelResult.FAILURE,
-          ERRORCODE: AirtelErrorCode.INVALID_REFERENCE,
-          ERRORDESC: 'Reference not found',
-          FLAG: 'N',
+          STATUS: AirtelStatus.NOT_FOUND,
+          MESSAGE: 'Reference not found',
         });
       }
 
       // Reject expired / non-active references, consistent with billfetch & validate.
       if (!reference.isValid()) {
         return this.buildResponseXml({
-          TYPE: 'LOOKUPDETAILSRESPONSE',
-          CUSTOMERREFERENCEID: dto.CUSTOMERREFERENCEID,
-          RESULT: AirtelResult.FAILURE,
-          ERRORCODE: AirtelErrorCode.ACCOUNT_LOCKED,
-          ERRORDESC: reference.isExpired() ? 'Reference expired' : `Reference ${reference.status}`,
-          FLAG: 'N',
+          STATUS: AirtelStatus.NOT_FOUND,
+          MESSAGE: reference.isExpired() ? 'Reference expired' : `Reference ${reference.status}`,
         });
       }
 
-      const remainingAmount = reference.amount - (reference.totalPaid || 0);
+      const { firstName, lastName } = this.splitName(reference.customerName);
 
-      return this.buildResponseXml({
-        TYPE: 'LOOKUPDETAILSRESPONSE',
-        CUSTOMERREFERENCEID: dto.CUSTOMERREFERENCEID,
-        RESULT: AirtelResult.SUCCESS,
-        ERRORCODE: AirtelErrorCode.SUCCESS,
-        ERRORDESC: 'Details found',
-        CUSTOMERNAME: reference.customerName || 'N/A',
-        AMOUNT: String(remainingAmount),
-        DESCRIPTION: reference.description || 'Payment',
-        FLAG: 'Y',
-        CONTENT: `${reference.customerName || 'N/A'}|TZS ${remainingAmount}|${reference.description || 'Payment'}`,
-      });
+      const response: AirtelLookupResponseDto = {
+        STATUS: AirtelStatus.OK,
+        FIRSTNAME: firstName,
+        LASTNAME: lastName,
+        MESSAGE: reference.description || 'Details found',
+      };
+
+      return this.buildResponseXml(response);
     } catch (error) {
       this.logger.error(`Airtel Lookup error: ${error.message}`, error.stack);
       return this.buildResponseXml({
-        TYPE: 'LOOKUPDETAILSRESPONSE',
-        CUSTOMERREFERENCEID: '',
-        RESULT: AirtelResult.FAILURE,
-        ERRORCODE: AirtelErrorCode.GENERAL_ERROR,
-        ERRORDESC: 'Internal error',
-        FLAG: 'N',
+        STATUS: AirtelStatus.NOT_FOUND,
+        MESSAGE: 'Internal error',
       });
     }
   }
@@ -523,16 +436,16 @@ export class AirtelService {
    * Create Airtel transaction record
    */
   async createTransaction(
-    dto: AirtelProcessRequestDto,
+    dto: AirtelC2BRequestDto,
     status: AirtelTransactionStatus = AirtelTransactionStatus.RECEIVED,
   ): Promise<AirtelTransaction> {
     const transaction = this.airtelTransactionRepo.create({
-      txnId: dto.TXNID,
-      referenceNumber: dto.CUSTOMERREFERENCEID,
+      txnId: dto.REFERENCE1,
+      referenceNumber: dto.REFERENCE,
       amount: dto.AMOUNT,
-      customerPhone: dto.MSISDN,
-      customerName: dto.SENDERNAME,
-      companyName: dto.COMPANYNAME,
+      customerPhone: dto.CUSTOMERMSISDN,
+      customerName: dto.CUSTOMERNAME,
+      companyName: dto.MERCHANTMSISDN,
       status,
       rawNotification: dto as any,
     });
@@ -780,50 +693,60 @@ export class AirtelService {
   /**
    * Build Validate Transaction response
    */
-  private buildValidateResponse(
-    dto: AirtelValidateRequestDto,
-    result: AirtelResult,
-    errorCode: string,
-    errorDesc: string,
-    content?: string,
-  ): string {
-    const response: AirtelValidateResponseDto = {
-      TYPE: 'VALIDATETXNRESPONSE',
-      TXNID: dto.TXNID || '',
-      REFID: '',
-      RESULT: result,
-      ERRORCODE: errorCode,
-      ERRORDESC: errorDesc,
-      MSISDN: dto.MSISDN || '',
-      FLAG: result === AirtelResult.SUCCESS ? 'Y' : 'N',
-      CONTENT: content,
-    };
-    return this.buildResponseXml(response);
+  private buildStatusResponse(status: AirtelStatus, message: string): string {
+    return this.buildResponseXml({ STATUS: status, MESSAGE: message });
   }
 
   /**
-   * Build Process Transaction response
+   * Build Process Transaction response: <STATUS><TXNID><MESSAGE>
    */
   private buildProcessResponse(
-    dto: AirtelProcessRequestDto,
-    result: AirtelResult,
-    errorCode: string,
-    errorDesc: string,
-    content?: string,
-    refId?: string,
+    status: AirtelStatus,
+    partnerTxnId: string,
+    message: string,
   ): string {
-    const response: AirtelProcessResponseDto = {
-      TYPE: 'PROCESSTXNRESPONSE',
-      TXNID: dto.TXNID || '',
-      REFID: refId || '',
-      RESULT: result,
-      ERRORCODE: errorCode,
-      ERRORDESC: errorDesc,
-      MSISDN: dto.MSISDN || '',
-      FLAG: result === AirtelResult.SUCCESS ? 'Y' : 'N',
-      CONTENT: content,
-    };
-    return this.buildResponseXml(response);
+    return this.buildResponseXml({
+      STATUS: status,
+      TXNID: partnerTxnId || '',
+      MESSAGE: message,
+    });
+  }
+
+  /**
+   * Build Transaction Enquiry response: <STATUS><MESSAGE><REF>
+   */
+  private buildEnquiryResponse(
+    status: AirtelStatus,
+    ref: string,
+    message: string,
+  ): string {
+    return this.buildResponseXml({
+      STATUS: status,
+      MESSAGE: message,
+      REF: ref || '',
+    });
+  }
+
+  /**
+   * Split a stored full name into FIRSTNAME / LASTNAME for Airtel responses.
+   * First token becomes FIRSTNAME, the remainder (if any) becomes LASTNAME.
+   */
+  private splitName(fullName?: string): { firstName: string; lastName: string } {
+    const parts = (fullName || '').trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) {
+      return { firstName: 'N/A', lastName: '' };
+    }
+    return { firstName: parts[0], lastName: parts.slice(1).join(' ') };
+  }
+
+  /**
+   * Format a date as YYYY-MM-DD (Airtel DUEDATE format), or undefined.
+   */
+  private formatDate(date?: Date): string | undefined {
+    if (!date) {
+      return undefined;
+    }
+    return new Date(date).toISOString().slice(0, 10);
   }
 
   /**

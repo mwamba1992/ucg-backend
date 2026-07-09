@@ -18,6 +18,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { Public } from '../auth/decorators/public.decorator';
 import { UserRole } from '../user/entities/user.entity';
 import { AirtelService } from './airtel.service';
+import { AirtelStatus } from './dto/airtel-notification.dto';
 
 @ApiTags('Airtel')
 @Controller('airtel')
@@ -58,14 +59,8 @@ export class AirtelController {
       this.logger.error(`Airtel VALIDATE error (${responseTime}ms): ${error.message}`, error.stack);
 
       return this.airtelService.buildResponseXml({
-        TYPE: 'VALIDATETXNRESPONSE',
-        TXNID: '',
-        REFID: '',
-        RESULT: 'TF',
-        ERRORCODE: 'error100',
-        ERRORDESC: 'Internal error',
-        MSISDN: '',
-        FLAG: 'N',
+        STATUS: AirtelStatus.BAD_REQUEST,
+        MESSAGE: 'Internal error',
       });
     }
   }
@@ -100,14 +95,9 @@ export class AirtelController {
       this.logger.error(`Airtel PROCESS error (${responseTime}ms): ${error.message}`, error.stack);
 
       return this.airtelService.buildResponseXml({
-        TYPE: 'PROCESSTXNRESPONSE',
+        STATUS: AirtelStatus.BAD_REQUEST,
         TXNID: '',
-        REFID: '',
-        RESULT: 'TF',
-        ERRORCODE: 'error100',
-        ERRORDESC: 'Internal error',
-        MSISDN: '',
-        FLAG: 'N',
+        MESSAGE: 'Internal error',
       });
     }
   }
@@ -142,13 +132,9 @@ export class AirtelController {
       this.logger.error(`Airtel ENQUIRY error (${responseTime}ms): ${error.message}`, error.stack);
 
       return this.airtelService.buildResponseXml({
-        TYPE: 'TXNENQUIRYRESPONSE',
-        TXNID: '',
-        REFID: '',
-        RESULT: 'TF',
-        ERRORCODE: 'error100',
-        ERRORDESC: 'Internal error',
-        FLAG: 'N',
+        STATUS: AirtelStatus.BAD_REQUEST,
+        MESSAGE: 'Internal error',
+        REF: '',
       });
     }
   }
@@ -183,12 +169,8 @@ export class AirtelController {
       this.logger.error(`Airtel BILLFETCH error (${responseTime}ms): ${error.message}`, error.stack);
 
       return this.airtelService.buildResponseXml({
-        TYPE: 'BILLFETCHRESPONSE',
-        CUSTOMERREFERENCEID: '',
-        RESULT: 'TF',
-        ERRORCODE: 'error100',
-        ERRORDESC: 'Internal error',
-        FLAG: 'N',
+        STATUS: AirtelStatus.NOT_FOUND,
+        MESSAGE: 'Internal error',
       });
     }
   }
@@ -223,12 +205,8 @@ export class AirtelController {
       this.logger.error(`Airtel LOOKUP error (${responseTime}ms): ${error.message}`, error.stack);
 
       return this.airtelService.buildResponseXml({
-        TYPE: 'LOOKUPDETAILSRESPONSE',
-        CUSTOMERREFERENCEID: '',
-        RESULT: 'TF',
-        ERRORCODE: 'error100',
-        ERRORDESC: 'Internal error',
-        FLAG: 'N',
+        STATUS: AirtelStatus.NOT_FOUND,
+        MESSAGE: 'Internal error',
       });
     }
   }
