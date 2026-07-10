@@ -375,6 +375,7 @@ export class NotificationService {
       isFullyPaid: boolean;
       paidAt: string;
     },
+    apiKey?: string | null,
   ): Promise<NotificationResult> {
     try {
       if (!webhookUrl) {
@@ -391,6 +392,12 @@ export class NotificationService {
         'Content-Type': 'application/json',
         'User-Agent': 'UCG-Webhook/1.0',
       };
+
+      // Attach the SP's API key (set at registration) so the SP can
+      // authenticate the incoming webhook.
+      if (apiKey) {
+        headers['x-api-key'] = apiKey;
+      }
 
       // Sign payload with webhook secret if provided
       if (webhookSecret) {

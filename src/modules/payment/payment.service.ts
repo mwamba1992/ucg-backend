@@ -334,6 +334,7 @@ export class PaymentService {
             isFullyPaid: remainingAmount <= 0,
             paidAt: savedPayment.paidAt?.toISOString() || new Date().toISOString(),
           } as any,
+          reference.serviceProvider.apiKey || null,
         );
       }
     } catch (error) {
