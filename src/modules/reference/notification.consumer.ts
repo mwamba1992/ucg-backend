@@ -34,33 +34,61 @@ export class NotificationConsumer {
         `Processing callback notification to: ${message.callbackUrl} (attempt ${retryCount + 1}/${this.MAX_RETRIES + 1})`,
       );
 
+      const body = {
+        success: message.success,
+        referenceNumber: message.referenceNumber,
+        reference: message.reference,
+        error: message.error,
+        requestId: message.requestId,
+        timestamp: new Date().toISOString(),
+      };
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'User-Agent': 'UCG-Webhook/1.0',
+        'X-UCG-Retry-Count': retryCount.toString(),
+      };
+
+      // Attach the SP's API key so the SP can authenticate the callback.
+      if (message.apiKey) {
+        headers['x-api-key'] = message.apiKey;
+      }
+
+      // Log exactly what we send (secrets masked) so we can prove which
+      // headers went out when an SP claims a header is missing.
+      this.logger.log(
+        `Sending callback to ${message.callbackUrl}\n` +
+          `Headers: ${JSON.stringify(this.maskHeaders(headers))}\n` +
+          `Body: ${JSON.stringify(body)}`,
+      );
+
       // Send HTTP POST to callback URL
       const response = await firstValueFrom(
-        this.httpService.post(message.callbackUrl, {
-          success: message.success,
-          referenceNumber: message.referenceNumber,
-          reference: message.reference,
-          error: message.error,
-          requestId: message.requestId,
-          timestamp: new Date().toISOString(),
-        }, {
-          headers: {
-            'Content-Type': 'application/json',
-            'User-Agent': 'UCG-Webhook/1.0',
-            'X-UCG-Retry-Count': retryCount.toString(),
-          },
+        this.httpService.post(message.callbackUrl, body, {
+          headers,
           timeout: 10000, // 10 second timeout
         }),
       );
 
       // Success
       channel.ack(originalMsg);
+      const responseBody =
+        typeof response.data === 'string'
+          ? response.data
+          : JSON.stringify(response.data);
       this.logger.log(
-        `Callback sent successfully to ${message.callbackUrl} - Status: ${response.status}`,
+        `Callback response from ${message.callbackUrl} - Status: ${response.status} - Body: ${responseBody}`,
       );
     } catch (error) {
+      const errResponse = error.response
+        ? ` - Status: ${error.response.status} - Body: ${
+            typeof error.response.data === 'string'
+              ? error.response.data
+              : JSON.stringify(error.response.data)
+          }`
+        : '';
       this.logger.error(
-        `Failed to send callback to ${message.callbackUrl}: ${error.message}`,
+        `Failed to send callback to ${message.callbackUrl}: ${error.message}${errResponse}`,
       );
 
       // Retry logic
@@ -116,5 +144,26 @@ export class NotificationConsumer {
         channel.ack(originalMsg);
       }
     }
+  }
+
+  /**
+   * Return a copy of outbound headers with sensitive values masked, so the
+   * header set can be logged safely (proves presence without leaking secrets).
+   */
+  private maskHeaders(headers: Record<string, string>): Record<string, string> {
+    const SENSITIVE = ['x-api-key', 'X-UCG-Signature', 'Authorization'];
+    const masked: Record<string, string> = { ...headers };
+    for (const key of SENSITIVE) {
+      if (masked[key]) {
+        masked[key] = this.maskSecret(masked[key]);
+      }
+    }
+    return masked;
+  }
+
+  private maskSecret(value: string): string {
+    if (!value) return value;
+    if (value.length <= 8) return '****';
+    return `${value.slice(0, 4)}…${value.slice(-4)} (len ${value.length})`;
   }
 }

@@ -77,6 +77,7 @@ export class ReferenceConsumer {
         this.referenceProducer.emitNotification({
           callbackUrl: message.callbackUrl,
           requestId: message.requestId,
+          apiKey: reference.serviceProvider?.apiKey,
           success: true,
           referenceNumber: reference.referenceNumber,
           reference: {

@@ -149,6 +149,10 @@ export class ReferenceNotificationMessage {
   error?: string;
 
   @IsOptional()
+  @IsString()
+  apiKey?: string; // SP's API key, sent as x-api-key header on the callback
+
+  @IsOptional()
   @IsNumber()
   retryCount?: number;
 }
