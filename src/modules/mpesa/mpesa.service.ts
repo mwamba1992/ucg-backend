@@ -553,13 +553,19 @@ export class MpesaService {
    */
   async sendCallbackToMpesa(message: MpesaCallbackMessage): Promise<boolean> {
     try {
-      if (!this.mpesaCallbackUrl) {
-        this.logger.warn('M-Pesa callback URL not configured - skipping callback');
-        return true; // Return true to prevent retries
-      }
-
       // Get M-Pesa config
       const config = await this.getMpesaConfig();
+
+      // Resolve callback URL: env var takes precedence, otherwise the
+      // callbackUrl configured on the mpesa_config row by admin.
+      const callbackUrl = this.mpesaCallbackUrl || config?.callbackUrl;
+
+      if (!callbackUrl) {
+        this.logger.warn(
+          'M-Pesa callback URL not configured (env MPESA_CALLBACK_URL and mpesa_config.callbackUrl both empty) - skipping callback',
+        );
+        return true; // Return true to prevent retries
+      }
 
       // Generate timestamp
       const timestamp = MpesaEncryption.generateTimestamp();
@@ -599,12 +605,12 @@ export class MpesaService {
       const xmlBody = await this.buildCallbackXml(callbackDto);
 
       this.logger.log(
-        `Sending callback to M-Pesa: ${this.mpesaCallbackUrl} - Conversation: ${message.conversationId}`,
+        `Sending callback to M-Pesa: ${callbackUrl} - Conversation: ${message.conversationId}`,
       );
 
       // Send HTTP POST to M-Pesa
       const response = await firstValueFrom(
-        this.httpService.post(this.mpesaCallbackUrl, xmlBody, {
+        this.httpService.post(callbackUrl, xmlBody, {
           headers: {
             'Content-Type': 'application/xml',
           },
