@@ -622,6 +622,15 @@ export class MpesaService {
         }),
       );
 
+      // Log exactly what M-Pesa returned (status + body) for traceability.
+      const responseBody =
+        typeof response.data === 'string'
+          ? response.data
+          : JSON.stringify(response.data);
+      this.logger.log(
+        `M-Pesa callback response for ${message.conversationId} - Status: ${response.status}\nBody:\n${responseBody}`,
+      );
+
       if (response.status === 200) {
         this.logger.log(
           `Callback sent successfully to M-Pesa: ${message.conversationId}`,
@@ -644,8 +653,17 @@ export class MpesaService {
         return false;
       }
     } catch (error) {
+      // Surface M-Pesa's response body when the failure carries one (e.g. a
+      // non-2xx reply), not just the axios error message.
+      const errResponse = error.response
+        ? ` - Status: ${error.response.status} - Body: ${
+            typeof error.response.data === 'string'
+              ? error.response.data
+              : JSON.stringify(error.response.data)
+          }`
+        : '';
       this.logger.error(
-        `Failed to send callback to M-Pesa: ${error.message}`,
+        `Failed to send callback to M-Pesa: ${error.message}${errResponse}`,
         error.stack,
       );
 
