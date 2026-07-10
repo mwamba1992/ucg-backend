@@ -5,6 +5,7 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import * as xml2js from 'xml2js';
+import * as https from 'https';
 import {
   MpesaTransaction,
   MpesaTransactionStatus,
@@ -615,6 +616,9 @@ export class MpesaService {
             'Content-Type': 'application/xml',
           },
           timeout: 30000, // 30 seconds timeout
+          // M-Pesa broker presents a self-signed cert in its chain; skip
+          // TLS chain verification for this outbound callback.
+          httpsAgent: new https.Agent({ rejectUnauthorized: false }),
         }),
       );
 
