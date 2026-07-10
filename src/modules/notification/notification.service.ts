@@ -408,8 +408,12 @@ export class NotificationService {
         headers['X-UCG-Signature'] = signature;
       }
 
+      // Log exactly what we send (secrets masked) so we can prove which
+      // headers went out when an SP claims a header is missing.
       this.logger.log(
-        `Sending payment webhook to ${webhookUrl} for reference ${payload.referenceNumber}`,
+        `Sending payment webhook to ${webhookUrl} for reference ${payload.referenceNumber}\n` +
+          `Headers: ${JSON.stringify(this.maskHeaders(headers))}\n` +
+          `Body: ${JSON.stringify(body)}`,
       );
 
       const response = await firstValueFrom(
@@ -420,17 +424,49 @@ export class NotificationService {
         }),
       );
 
+      const responseBody =
+        typeof response.data === 'string'
+          ? response.data
+          : JSON.stringify(response.data);
       this.logger.log(
-        `Webhook sent successfully to ${webhookUrl} - Status: ${response.status}`,
+        `Webhook response from ${webhookUrl} - Status: ${response.status} - Body: ${responseBody}`,
       );
 
       return { success: true, statusCode: String(response.status) };
     } catch (error) {
+      const errResponse = error.response
+        ? ` - Status: ${error.response.status} - Body: ${
+            typeof error.response.data === 'string'
+              ? error.response.data
+              : JSON.stringify(error.response.data)
+          }`
+        : '';
       this.logger.error(
-        `Failed to send webhook to ${webhookUrl}: ${error.message}`,
+        `Failed to send webhook to ${webhookUrl}: ${error.message}${errResponse}`,
       );
       return { success: false, error: error.message };
     }
+  }
+
+  /**
+   * Return a copy of outbound headers with sensitive values masked, so the
+   * header set can be logged safely (proves presence without leaking secrets).
+   */
+  private maskHeaders(headers: Record<string, string>): Record<string, string> {
+    const SENSITIVE = ['x-api-key', 'X-UCG-Signature', 'Authorization'];
+    const masked: Record<string, string> = { ...headers };
+    for (const key of SENSITIVE) {
+      if (masked[key]) {
+        masked[key] = this.maskSecret(masked[key]);
+      }
+    }
+    return masked;
+  }
+
+  private maskSecret(value: string): string {
+    if (!value) return value;
+    if (value.length <= 8) return '****';
+    return `${value.slice(0, 4)}…${value.slice(-4)} (len ${value.length})`;
   }
 
   /**
