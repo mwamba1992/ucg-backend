@@ -99,8 +99,15 @@ export class WinstonLoggerService implements LoggerService {
 
   private toMessage(message: any): string {
     if (typeof message === 'string') return message;
+    // Error objects have non-enumerable message/stack, so JSON.stringify(err)
+    // returns "{}" and swallows the real error. Surface them explicitly.
+    if (message instanceof Error) {
+      return message.stack || `${message.name}: ${message.message}`;
+    }
     try {
-      return JSON.stringify(message);
+      const serialized = JSON.stringify(message);
+      // Fall back to String() when JSON drops everything (e.g. non-plain objects).
+      return serialized === '{}' && message != null ? String(message) : serialized;
     } catch {
       return String(message);
     }
@@ -114,8 +121,9 @@ export class WinstonLoggerService implements LoggerService {
 
   error(message: any, trace?: string, context?: string) {
     const msg = this.toMessage(message);
-    this.channelLogger(context).error(msg, { context, trace });
-    this.errorLogger.error(msg, { context, trace });
+    const stack = trace || (message instanceof Error ? message.stack : undefined);
+    this.channelLogger(context).error(msg, { context, trace: stack });
+    this.errorLogger.error(msg, { context, trace: stack });
   }
 
   warn(message: any, context?: string) {
