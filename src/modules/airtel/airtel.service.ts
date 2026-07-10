@@ -24,7 +24,7 @@ import {
   AirtelPaymentProcessingResponse,
 } from './dto/airtel-queue.dto';
 import { ReferenceService } from '../reference/reference.service';
-import { PaymentOption } from '../reference/entities/payment-reference.entity';
+import { PaymentOption, ReferenceStatus } from '../reference/entities/payment-reference.entity';
 import { PaymentService } from '../payment/payment.service';
 import { CBSService } from '../cbs/cbs.service';
 import { ApefPaymentService } from '../apef/apef-payment.service';
@@ -103,7 +103,10 @@ export class AirtelService {
 
       // Required fields: Airtel txn id, bill reference, positive amount
       if (!dto.REFERENCE1 || !dto.REFERENCE || !dto.AMOUNT || dto.AMOUNT <= 0) {
-        return this.buildStatusResponse(AirtelStatus.BAD_REQUEST, 'Missing required fields');
+        return this.buildStatusResponse(
+          AirtelStatus.BAD_REQUEST,
+          'Required payment details are missing. Please provide a valid reference number and amount.',
+        );
       }
 
       // Validate reference against our records
@@ -147,7 +150,11 @@ export class AirtelService {
 
       // Required fields: Airtel txn id, payer msisdn, bill reference, positive amount
       if (!dto.REFERENCE1 || !dto.CUSTOMERMSISDN || !dto.REFERENCE || !dto.AMOUNT || dto.AMOUNT <= 0) {
-        return this.buildProcessResponse(AirtelStatus.BAD_REQUEST, '', 'Missing required fields');
+        return this.buildProcessResponse(
+          AirtelStatus.BAD_REQUEST,
+          '',
+          'Required payment details are missing. Please provide a valid reference number and amount.',
+        );
       }
 
       // Check for duplicate transaction (keyed on Airtel's transaction id)
@@ -248,7 +255,7 @@ export class AirtelService {
       if (!dto.CUSTOMERREF) {
         return this.buildResponseXml({
           STATUS: AirtelStatus.NOT_FOUND,
-          MESSAGE: 'CUSTOMERREF is required',
+          MESSAGE: 'Please provide a reference number.',
         });
       }
 
@@ -257,21 +264,21 @@ export class AirtelService {
       if (!reference) {
         return this.buildResponseXml({
           STATUS: AirtelStatus.NOT_FOUND,
-          MESSAGE: 'Reference not found',
+          MESSAGE: 'This reference number does not exist. Please check the number and try again.',
         });
       }
 
       if (!reference.isValid()) {
         return this.buildResponseXml({
           STATUS: AirtelStatus.NOT_FOUND,
-          MESSAGE: reference.isExpired() ? 'Reference expired' : `Reference ${reference.status}`,
+          MESSAGE: this.referenceUnavailableMessage(reference),
         });
       }
 
       if (reference.isFullyPaid() && reference.paymentOption !== PaymentOption.PERPETUAL) {
         return this.buildResponseXml({
           STATUS: AirtelStatus.NOT_FOUND,
-          MESSAGE: 'Reference already fully paid',
+          MESSAGE: 'This reference number has already been fully paid.',
         });
       }
 
@@ -321,7 +328,7 @@ export class AirtelService {
       if (!dto.CUSTOMERREF) {
         return this.buildResponseXml({
           STATUS: AirtelStatus.NOT_FOUND,
-          MESSAGE: 'CUSTOMERREF is required',
+          MESSAGE: 'Please provide a reference number.',
         });
       }
 
@@ -330,7 +337,7 @@ export class AirtelService {
       if (!reference) {
         return this.buildResponseXml({
           STATUS: AirtelStatus.NOT_FOUND,
-          MESSAGE: 'Reference not found',
+          MESSAGE: 'This reference number does not exist. Please check the number and try again.',
         });
       }
 
@@ -338,7 +345,7 @@ export class AirtelService {
       if (!reference.isValid()) {
         return this.buildResponseXml({
           STATUS: AirtelStatus.NOT_FOUND,
-          MESSAGE: reference.isExpired() ? 'Reference expired' : `Reference ${reference.status}`,
+          MESSAGE: this.referenceUnavailableMessage(reference),
         });
       }
 
@@ -375,7 +382,7 @@ export class AirtelService {
         return {
           valid: false,
           errorCode: AirtelErrorCode.INVALID_REFERENCE,
-          errorDescription: 'Reference not found',
+          errorDescription: 'This reference number does not exist. Please check the number and try again.',
         };
       }
 
@@ -383,7 +390,7 @@ export class AirtelService {
         return {
           valid: false,
           errorCode: AirtelErrorCode.ACCOUNT_LOCKED,
-          errorDescription: `Reference ${reference.status}`,
+          errorDescription: this.referenceUnavailableMessage(reference),
         };
       }
 
@@ -391,7 +398,7 @@ export class AirtelService {
         return {
           valid: false,
           errorCode: AirtelErrorCode.ACCOUNT_LOCKED,
-          errorDescription: 'Reference already fully paid',
+          errorDescription: 'This reference number has already been fully paid.',
         };
       }
 
@@ -407,7 +414,7 @@ export class AirtelService {
         return {
           valid: false,
           errorCode,
-          errorDescription: validation.reason,
+          errorDescription: this.amountNotAllowedMessage(reference, validation.reason),
         };
       }
 
@@ -725,6 +732,51 @@ export class AirtelService {
       MESSAGE: message,
       REF: ref || '',
     });
+  }
+
+  /**
+   * Build a clear, customer-friendly message explaining why a reference cannot
+   * be paid (does not exist / expired / cancelled / already paid / inactive).
+   */
+  private referenceUnavailableMessage(reference: any): string {
+    if (!reference) {
+      return 'This reference number does not exist. Please check the number and try again.';
+    }
+    if (reference.isExpired && reference.isExpired()) {
+      return 'This reference number has expired and can no longer be used for payment.';
+    }
+    if (reference.status === ReferenceStatus.CANCELLED) {
+      return 'This reference number has been cancelled and cannot be used for payment.';
+    }
+    if (reference.isFullyPaid && reference.isFullyPaid()) {
+      return 'This reference number has already been fully paid.';
+    }
+    return 'This reference number is not valid for payment.';
+  }
+
+  /**
+   * Build a customer-friendly message when the entered amount is not allowed
+   * for a reference's payment option.
+   */
+  private amountNotAllowedMessage(reference: any, reason: string): string {
+    const currency = reference.currency || 'TZS';
+    const remaining = reference.getRemainingAmount();
+    const full = Number(reference.amount);
+    const r = reason || '';
+
+    if (r.includes('exceeds') || r.includes('<=')) {
+      return `The amount entered is more than the outstanding balance of ${currency} ${remaining} for this reference.`;
+    }
+    if (r.includes('exactly')) {
+      return `This reference must be paid exactly ${currency} ${full}.`;
+    }
+    if (r.includes('>=')) {
+      return `This reference must be paid in full. The required amount is ${currency} ${full}.`;
+    }
+    if (r.includes('already fully paid') || r.includes('only one payment')) {
+      return 'This reference number has already been fully paid.';
+    }
+    return 'The amount entered is not allowed for this reference. Please check the amount and try again.';
   }
 
   /**
