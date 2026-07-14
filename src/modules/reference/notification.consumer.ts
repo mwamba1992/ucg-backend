@@ -1,10 +1,13 @@
 import { Controller, Logger } from '@nestjs/common';
 import { MessagePattern, Payload, Ctx, RmqContext } from '@nestjs/microservices';
 import { HttpService } from '@nestjs/axios';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { firstValueFrom } from 'rxjs';
 import { RABBITMQ_ROUTING_KEYS } from '../../config/rabbitmq.config';
 import { ReferenceProducer } from './reference.producer';
 import { ReferenceNotificationMessage } from './dto/reference-queue.dto';
+import { ServiceProvider } from '../service-provider/entities/service-provider.entity';
 
 @Controller()
 export class NotificationConsumer {
@@ -15,7 +18,36 @@ export class NotificationConsumer {
   constructor(
     private readonly httpService: HttpService,
     private readonly referenceProducer: ReferenceProducer,
+    @InjectRepository(ServiceProvider)
+    private readonly serviceProviderRepository: Repository<ServiceProvider>,
   ) {}
+
+  /**
+   * Resolve the x-api-key to send. Reads the SP's current key from the DB so
+   * an edited key always takes effect (no stale snapshot); falls back to the
+   * key captured on the queue message if the live lookup is unavailable.
+   */
+  private async resolveApiKey(
+    message: ReferenceNotificationMessage,
+  ): Promise<string | undefined> {
+    if (message.serviceProviderId) {
+      try {
+        const sp = await this.serviceProviderRepository.findOne({
+          where: { id: message.serviceProviderId },
+          select: ['id', 'apiKey'],
+        });
+        if (sp?.apiKey) {
+          return sp.apiKey;
+        }
+      } catch (error) {
+        this.logger.warn(
+          `Could not load live API key for SP ${message.serviceProviderId}, ` +
+            `falling back to message snapshot: ${error.message}`,
+        );
+      }
+    }
+    return message.apiKey;
+  }
 
   /**
    * Handle notification callback messages
@@ -50,8 +82,10 @@ export class NotificationConsumer {
       };
 
       // Attach the SP's API key so the SP can authenticate the callback.
-      if (message.apiKey) {
-        headers['x-api-key'] = message.apiKey;
+      // Resolved live from the DB so an edited key takes effect immediately.
+      const apiKey = await this.resolveApiKey(message);
+      if (apiKey) {
+        headers['x-api-key'] = apiKey;
       }
 
       // Log exactly what we send (secrets masked) so we can prove which

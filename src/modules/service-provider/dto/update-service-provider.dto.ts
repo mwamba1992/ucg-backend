@@ -63,6 +63,17 @@ export class UpdateServiceProviderDto {
 
   @ApiPropertyOptional({
     description:
+      "The SP's API key, sent as the x-api-key header on outbound payment " +
+      'webhooks so the SP can authenticate our callbacks. Must be unique. ' +
+      'Leave unset to keep the existing key unchanged.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  apiKey?: string;
+
+  @ApiPropertyOptional({
+    description:
       "External reference integration: leading characters of the SP's own references. " +
       'Set this only for SPs whose references we look up by calling their system. ' +
       'Must be unique, and requires referenceQueryUrl to also be set.',

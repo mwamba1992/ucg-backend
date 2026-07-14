@@ -462,6 +462,24 @@ export class ServiceProviderService {
         this.logger.log(`✅ TIN number is unique`);
       }
 
+      // If the API key is being changed, check for duplicates (excluding current SP).
+      // Applied conditionally below so an update that omits apiKey never wipes it.
+      if (updateDto.apiKey && updateDto.apiKey !== serviceProvider.apiKey) {
+        this.logger.log(`🔑 Checking API key uniqueness`);
+        const existingApiKey = await this.serviceProviderRepository.findOne({
+          where: {
+            apiKey: updateDto.apiKey,
+            id: Not(id),
+          },
+        });
+
+        if (existingApiKey) {
+          this.logger.error(`❌ API key already in use`);
+          throw new ConflictException('API key already in use by another service provider');
+        }
+        this.logger.log(`✅ API key is unique`);
+      }
+
       // Update main entity fields
       this.logger.log(`📝 Updating main entity fields...`);
       Object.assign(serviceProvider, {
@@ -478,6 +496,12 @@ export class ServiceProviderService {
         status: updateDto.status,
         rejectionReason: updateDto.rejectionReason,
       });
+
+      // Apply API key only when explicitly provided, so unrelated updates
+      // (which omit apiKey) never overwrite the existing key with undefined.
+      if (updateDto.apiKey) {
+        serviceProvider.apiKey = updateDto.apiKey;
+      }
       this.logger.log(`✅ Main fields updated`);
 
       // External reference-query integration config (Flow A).

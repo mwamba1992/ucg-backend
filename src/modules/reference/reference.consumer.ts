@@ -78,6 +78,7 @@ export class ReferenceConsumer {
           callbackUrl: message.callbackUrl,
           requestId: message.requestId,
           apiKey: reference.serviceProvider?.apiKey,
+          serviceProviderId: reference.serviceProviderId ?? reference.serviceProvider?.id,
           success: true,
           referenceNumber: reference.referenceNumber,
           reference: {

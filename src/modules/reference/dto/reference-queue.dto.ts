@@ -150,7 +150,11 @@ export class ReferenceNotificationMessage {
 
   @IsOptional()
   @IsString()
-  apiKey?: string; // SP's API key, sent as x-api-key header on the callback
+  apiKey?: string; // SP's API key snapshot; used as fallback if live lookup fails
+
+  @IsOptional()
+  @IsString()
+  serviceProviderId?: string; // Used to re-fetch the current x-api-key at send time
 
   @IsOptional()
   @IsNumber()
