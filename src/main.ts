@@ -8,7 +8,9 @@ import * as bodyParser from 'body-parser';
 
 async function bootstrap() {
   // Buffer early logs until our file logger is attached, then route everything through it.
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  // bodyParser: false so we register parsers ourselves in a controlled order
+  // (telco XML routes must be parsed as text before the JSON parser can see them).
+  const app = await NestFactory.create(AppModule, { bufferLogs: true, bodyParser: false });
   app.useLogger(app.get(WinstonLoggerService));
 
   // Connect RabbitMQ microservice for reference generation queue
@@ -104,22 +106,33 @@ async function bootstrap() {
   // Enable CORS
   app.enableCors();
 
-  // Configure body parser for XML endpoints
-  // Use raw body parser for XML webhooks (Vodacom M-Pesa, Mixx TigoPesa)
-  app.use('/api/v1/vodacom/transaction', bodyParser.text({ type: 'application/xml' }));
-  app.use('/api/v1/vodacom/transaction', bodyParser.text({ type: 'text/xml' }));
-  app.use('/api/v1/mixx/transaction', bodyParser.text({ type: 'application/xml' }));
-  app.use('/api/v1/mixx/transaction', bodyParser.text({ type: 'text/xml' }));
-  app.use('/api/v1/airtel/validate', bodyParser.text({ type: 'application/xml' }));
-  app.use('/api/v1/airtel/validate', bodyParser.text({ type: 'text/xml' }));
-  app.use('/api/v1/airtel/process', bodyParser.text({ type: 'application/xml' }));
-  app.use('/api/v1/airtel/process', bodyParser.text({ type: 'text/xml' }));
-  app.use('/api/v1/airtel/enquiry', bodyParser.text({ type: 'application/xml' }));
-  app.use('/api/v1/airtel/enquiry', bodyParser.text({ type: 'text/xml' }));
-  app.use('/api/v1/airtel/billfetch', bodyParser.text({ type: 'application/xml' }));
-  app.use('/api/v1/airtel/billfetch', bodyParser.text({ type: 'text/xml' }));
-  app.use('/api/v1/airtel/lookup', bodyParser.text({ type: 'application/xml' }));
-  app.use('/api/v1/airtel/lookup', bodyParser.text({ type: 'text/xml' }));
+  // Body parsing.
+  //
+  // Telco C2B webhooks (Vodacom M-Pesa, Mixx TigoPesa, Airtel) send their
+  // payload as XML under a <COMMAND>/<Request> root. Some aggregators mislabel
+  // the Content-Type (e.g. send the XML as application/json), which made the
+  // default JSON parser try to JSON.parse the "<COMMAND>..." body and reject it
+  // with 400 "Unexpected token '<'". To avoid depending on the caller's
+  // Content-Type, parse these routes as raw text for ANY Content-Type.
+  //
+  // These route-scoped text parsers are registered BEFORE the global JSON parser
+  // so they consume and mark the body first; the JSON parser then skips them.
+  const XML_WEBHOOK_ROUTES = [
+    '/api/v1/vodacom/transaction',
+    '/api/v1/mixx/transaction',
+    '/api/v1/airtel/validate',
+    '/api/v1/airtel/process',
+    '/api/v1/airtel/enquiry',
+    '/api/v1/airtel/billfetch',
+    '/api/v1/airtel/lookup',
+  ];
+  for (const route of XML_WEBHOOK_ROUTES) {
+    app.use(route, bodyParser.text({ type: () => true, limit: '5mb' }));
+  }
+
+  // Default parsers for the rest of the API (JSON + form-urlencoded).
+  app.use(bodyParser.json({ limit: '5mb' }));
+  app.use(bodyParser.urlencoded({ extended: true, limit: '5mb' }));
 
   // Global validation pipe
   app.useGlobalPipes(
