@@ -15,7 +15,7 @@ import { ReferenceService } from '../reference/reference.service';
 import { ApefClientService } from '../apef/apef-client.service';
 import { PspApiAuthGuard } from '../auth/guards/psp-api-auth.guard';
 import { CreatePaymentDto } from './dto/payment.dto';
-import { ReferenceStatus } from '../reference/entities/payment-reference.entity';
+import { PaymentOption, ReferenceStatus } from '../reference/entities/payment-reference.entity';
 
 /**
  * PSP Payment Controller
@@ -135,7 +135,8 @@ export class PspPaymentController {
     description:
       'Retrieve payment reference details to verify before submitting payment. ' +
       'Details are only returned for references that can still be paid: expired, ' +
-      'cancelled and used references return an error instead.',
+      'cancelled, used and fully-paid references return an error instead. Use ' +
+      'GET /psp/payments/reference/{referenceNumber} to look up a settled reference.',
   })
   @ApiParam({
     name: 'referenceNumber',
@@ -145,8 +146,9 @@ export class PspPaymentController {
   @ApiResponse({
     status: 200,
     description:
-      'Details are returned only for a payable reference. A reference that exists but ' +
-      'is expired, cancelled or used returns success=false with an error code and no details.',
+      'Details are returned only for a payable reference. A reference that exists but is ' +
+      'expired, cancelled, used or fully paid returns success=false with an error code ' +
+      'and no details.',
     content: {
       'application/json': {
         examples: {
@@ -182,7 +184,9 @@ export class PspPaymentController {
             },
           },
           expired: {
-            summary: 'Reference expired (also: REFERENCE_CANCELLED, REFERENCE_USED)',
+            summary:
+              'Reference expired (also: REFERENCE_CANCELLED, REFERENCE_USED, ' +
+              'REFERENCE_FULLY_PAID)',
             value: {
               success: false,
               error: {
@@ -249,6 +253,18 @@ export class PspPaymentController {
         return {
           success: false,
           error: this.referenceUnavailableError(reference),
+        };
+      }
+
+      // PERPETUAL references accept payments indefinitely, so being "fully paid"
+      // never closes them. Any other reference that is settled is done.
+      if (reference.isFullyPaid() && reference.paymentOption !== PaymentOption.PERPETUAL) {
+        return {
+          success: false,
+          error: {
+            code: 'REFERENCE_FULLY_PAID',
+            message: 'This reference number has already been fully paid.',
+          },
         };
       }
 
