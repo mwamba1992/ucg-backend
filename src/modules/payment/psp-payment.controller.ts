@@ -15,6 +15,7 @@ import { ReferenceService } from '../reference/reference.service';
 import { ApefClientService } from '../apef/apef-client.service';
 import { PspApiAuthGuard } from '../auth/guards/psp-api-auth.guard';
 import { CreatePaymentDto } from './dto/payment.dto';
+import { ReferenceStatus } from '../reference/entities/payment-reference.entity';
 
 /**
  * PSP Payment Controller
@@ -131,7 +132,10 @@ export class PspPaymentController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Get reference details (PSP API)',
-    description: 'Retrieve payment reference details to verify before submitting payment',
+    description:
+      'Retrieve payment reference details to verify before submitting payment. ' +
+      'Details are only returned for references that can still be paid: expired, ' +
+      'cancelled and used references return an error instead.',
   })
   @ApiParam({
     name: 'referenceNumber',
@@ -140,32 +144,52 @@ export class PspPaymentController {
   })
   @ApiResponse({
     status: 200,
-    description: 'Reference details retrieved successfully',
-    schema: {
-      example: {
-        success: true,
-        data: {
-          referenceNumber: 'HO1-0000001-123',
-          amount: 50000,
-          totalPaid: 0,
-          remainingAmount: 50000,
-          currency: 'TZS',
-          paymentOption: 'COMPLETE',
-          status: 'ACTIVE',
-          customerName: 'John Doe',
-          customerPhone: '+255712345678',
-          description: 'School fees payment',
-          expiryDate: '2026-12-31T23:59:59Z',
-          serviceProvider: {
-            spCode: 'HO1',
-            businessName: 'Hope International School',
-            email: 'accounts@hopeschool.com',
-            phoneNumber: '+255754321098',
-            primaryBankAccount: {
-              bankName: 'CRDB Bank',
-              accountNumber: '0123456789',
-              accountName: 'Hope International School',
-              branchName: 'Dar es Salaam',
+    description:
+      'Details are returned only for a payable reference. A reference that exists but ' +
+      'is expired, cancelled or used returns success=false with an error code and no details.',
+    content: {
+      'application/json': {
+        examples: {
+          payable: {
+            summary: 'Reference is payable',
+            value: {
+              success: true,
+              data: {
+                referenceNumber: 'HO1-0000001-123',
+                amount: 50000,
+                totalPaid: 0,
+                remainingAmount: 50000,
+                currency: 'TZS',
+                paymentOption: 'COMPLETE',
+                status: 'ACTIVE',
+                customerName: 'John Doe',
+                customerPhone: '+255712345678',
+                description: 'School fees payment',
+                expiryDate: '2026-12-31T23:59:59Z',
+                serviceProvider: {
+                  spCode: 'HO1',
+                  businessName: 'Hope International School',
+                  email: 'accounts@hopeschool.com',
+                  phoneNumber: '+255754321098',
+                  primaryBankAccount: {
+                    bankName: 'CRDB Bank',
+                    accountNumber: '0123456789',
+                    accountName: 'Hope International School',
+                    branchName: 'Dar es Salaam',
+                  },
+                },
+              },
+            },
+          },
+          expired: {
+            summary: 'Reference expired (also: REFERENCE_CANCELLED, REFERENCE_USED)',
+            value: {
+              success: false,
+              error: {
+                code: 'REFERENCE_EXPIRED',
+                message:
+                  'This reference number has expired and can no longer be used for payment.',
+              },
             },
           },
         },
@@ -215,6 +239,16 @@ export class PspPaymentController {
             code: 'NOT_FOUND',
             message: 'Payment reference not found',
           },
+        };
+      }
+
+      // Withhold details for references that can no longer be paid, consistent
+      // with the telco channels (Airtel billfetch/lookup). Without this a PSP
+      // could read customer and bank details off an expired or cancelled bill.
+      if (!reference.isValid()) {
+        return {
+          success: false,
+          error: this.referenceUnavailableError(reference),
         };
       }
 
@@ -306,5 +340,39 @@ export class PspPaymentController {
         },
       };
     }
+  }
+
+  /**
+   * Build the error returned when a reference exists but cannot be paid.
+   * Mirrors the telco channels' reasons so PSPs can branch on the code.
+   * Expiry is checked first: a reference past its expiry date is reported as
+   * expired even if its stored status is still ACTIVE (auto-expiry is lazy).
+   */
+  private referenceUnavailableError(reference: any): {
+    code: string;
+    message: string;
+  } {
+    if (reference.isExpired()) {
+      return {
+        code: 'REFERENCE_EXPIRED',
+        message: 'This reference number has expired and can no longer be used for payment.',
+      };
+    }
+    if (reference.status === ReferenceStatus.CANCELLED) {
+      return {
+        code: 'REFERENCE_CANCELLED',
+        message: 'This reference number has been cancelled and cannot be used for payment.',
+      };
+    }
+    if (reference.status === ReferenceStatus.USED) {
+      return {
+        code: 'REFERENCE_USED',
+        message: 'This reference number has already been used.',
+      };
+    }
+    return {
+      code: 'REFERENCE_NOT_VALID',
+      message: 'This reference number is not valid for payment.',
+    };
   }
 }
