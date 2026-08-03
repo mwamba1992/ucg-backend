@@ -78,6 +78,55 @@ export class AirtelService {
   }
 
   /**
+   * Whether the <USERNAME>/<PASSWORD> pair Airtel sends is checked.
+   *
+   * Enforcement switches on by itself once both AIRTEL_USERNAME and
+   * AIRTEL_PASSWORD are configured, so an environment that has not yet issued
+   * credentials to Airtel keeps working. Set AIRTEL_AUTH_ENABLED=false to hold
+   * it off even after the values are in place (useful while Airtel is still
+   * wiring them into their side).
+   */
+  private isAuthEnforced(): boolean {
+    if (this.configService.get<string>('AIRTEL_AUTH_ENABLED') === 'false') {
+      return false;
+    }
+
+    return Boolean(
+      this.configService.get<string>('AIRTEL_USERNAME') &&
+        this.configService.get<string>('AIRTEL_PASSWORD'),
+    );
+  }
+
+  /**
+   * Constant-time secret comparison. Digesting first keeps timingSafeEqual
+   * happy for values of differing length and stops the comparison itself from
+   * leaking how much of the secret was correct.
+   */
+  private secretsMatch(received: string, expected: string): boolean {
+    const a = crypto.createHash('sha256').update(received).digest();
+    const b = crypto.createHash('sha256').update(expected).digest();
+    return crypto.timingSafeEqual(a, b);
+  }
+
+  /**
+   * Verify the credentials carried in the request body. Returns true when
+   * enforcement is off, so callers can guard unconditionally.
+   */
+  private isAuthorized(username?: string, password?: string): boolean {
+    if (!this.isAuthEnforced()) {
+      return true;
+    }
+
+    const expectedUsername = this.configService.get<string>('AIRTEL_USERNAME') ?? '';
+    const expectedPassword = this.configService.get<string>('AIRTEL_PASSWORD') ?? '';
+
+    return (
+      this.secretsMatch(username ?? '', expectedUsername) &&
+      this.secretsMatch(password ?? '', expectedPassword)
+    );
+  }
+
+  /**
    * Handle Validate Transaction request
    */
   async handleValidateTransaction(xmlBody: string): Promise<string> {
@@ -100,6 +149,13 @@ export class AirtelService {
       this.logger.log(
         `Airtel Validate: Ref=${dto.REFERENCE}, AirtelTxnId=${dto.REFERENCE1}, Amount=${dto.AMOUNT}, MSISDN=${dto.CUSTOMERMSISDN}`,
       );
+
+      if (!this.isAuthorized(dto.USERNAME, dto.PASSWORD)) {
+        this.logger.warn(
+          `Airtel Validate rejected: invalid credentials (USERNAME=${dto.USERNAME ?? ''})`,
+        );
+        return this.buildStatusResponse(AirtelStatus.BAD_REQUEST, 'Authentication failed');
+      }
 
       // Required fields: Airtel txn id, bill reference, positive amount
       if (!dto.REFERENCE1 || !dto.REFERENCE || !dto.AMOUNT || dto.AMOUNT <= 0) {
@@ -147,6 +203,13 @@ export class AirtelService {
       this.logger.log(
         `Airtel Process: AirtelTxnId=${dto.REFERENCE1}, Ref=${dto.REFERENCE}, Amount=${dto.AMOUNT}, MSISDN=${dto.CUSTOMERMSISDN}`,
       );
+
+      if (!this.isAuthorized(dto.USERNAME, dto.PASSWORD)) {
+        this.logger.warn(
+          `Airtel Process rejected: invalid credentials (USERNAME=${dto.USERNAME ?? ''})`,
+        );
+        return this.buildProcessResponse(AirtelStatus.BAD_REQUEST, '', 'Authentication failed');
+      }
 
       // Required fields: Airtel txn id, payer msisdn, bill reference, positive amount
       if (!dto.REFERENCE1 || !dto.CUSTOMERMSISDN || !dto.REFERENCE || !dto.AMOUNT || dto.AMOUNT <= 0) {
@@ -252,6 +315,16 @@ export class AirtelService {
 
       this.logger.log(`Airtel BillFetch: Ref=${dto.CUSTOMERREF}, MSISDN=${dto.CUSTOMERMSISDN}`);
 
+      if (!this.isAuthorized(dto.USERNAME, dto.PASSWORD)) {
+        this.logger.warn(
+          `Airtel BillFetch rejected: invalid credentials (USERNAME=${dto.USERNAME ?? ''})`,
+        );
+        return this.buildResponseXml({
+          STATUS: AirtelStatus.BAD_REQUEST,
+          MESSAGE: 'Authentication failed',
+        });
+      }
+
       if (!dto.CUSTOMERREF) {
         return this.buildResponseXml({
           STATUS: AirtelStatus.NOT_FOUND,
@@ -324,6 +397,16 @@ export class AirtelService {
       };
 
       this.logger.log(`Airtel Lookup: Ref=${dto.CUSTOMERREF}, MSISDN=${dto.CUSTOMERMSISDN}`);
+
+      if (!this.isAuthorized(dto.USERNAME, dto.PASSWORD)) {
+        this.logger.warn(
+          `Airtel Lookup rejected: invalid credentials (USERNAME=${dto.USERNAME ?? ''})`,
+        );
+        return this.buildResponseXml({
+          STATUS: AirtelStatus.BAD_REQUEST,
+          MESSAGE: 'Authentication failed',
+        });
+      }
 
       if (!dto.CUSTOMERREF) {
         return this.buildResponseXml({

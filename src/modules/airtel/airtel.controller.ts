@@ -30,6 +30,16 @@ export class AirtelController {
   ) {}
 
   /**
+   * Mask the credential-bearing elements before a raw payload reaches the logs.
+   */
+  private redact(xmlBody: string): string {
+    return String(xmlBody ?? '').replace(
+      /<(PASSWORD|PIN)>[\s\S]*?<\/\1>/gi,
+      '<$1>***</$1>',
+    );
+  }
+
+  /**
    * Airtel C2B: Validate Transaction
    * Called by Airtel to validate if a reference/account exists before processing payment
    */
@@ -46,7 +56,7 @@ export class AirtelController {
 
     try {
       this.logger.log('Airtel VALIDATE request received');
-      this.logger.log(`Raw XML:\n${xmlBody}`);
+      this.logger.log(`Raw XML:\n${this.redact(xmlBody)}`);
 
       const response = await this.airtelService.handleValidateTransaction(xmlBody);
 
@@ -82,7 +92,7 @@ export class AirtelController {
 
     try {
       this.logger.log('Airtel PROCESS request received');
-      this.logger.log(`Raw XML:\n${xmlBody}`);
+      this.logger.log(`Raw XML:\n${this.redact(xmlBody)}`);
 
       const response = await this.airtelService.handleProcessTransaction(xmlBody);
 
@@ -119,7 +129,7 @@ export class AirtelController {
 
     try {
       this.logger.log('Airtel ENQUIRY request received');
-      this.logger.log(`Raw XML:\n${xmlBody}`);
+      this.logger.log(`Raw XML:\n${this.redact(xmlBody)}`);
 
       const response = await this.airtelService.handleTransactionEnquiry(xmlBody);
 
@@ -156,7 +166,7 @@ export class AirtelController {
 
     try {
       this.logger.log('Airtel BILLFETCH request received');
-      this.logger.log(`Raw XML:\n${xmlBody}`);
+      this.logger.log(`Raw XML:\n${this.redact(xmlBody)}`);
 
       const response = await this.airtelService.handleBillFetch(xmlBody);
 
@@ -192,7 +202,7 @@ export class AirtelController {
 
     try {
       this.logger.log('Airtel LOOKUP request received');
-      this.logger.log(`Raw XML:\n${xmlBody}`);
+      this.logger.log(`Raw XML:\n${this.redact(xmlBody)}`);
 
       const response = await this.airtelService.handleLookupDetails(xmlBody);
 
