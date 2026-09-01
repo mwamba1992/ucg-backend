@@ -73,71 +73,84 @@ export class DashboardService {
     endDate: Date,
     serviceProviderId?: string,
   ) {
-    const whereClause: any = {
-      createdAt: Between(startDate, endDate),
-    };
-
-    if (serviceProviderId) {
-      whereClause.serviceProviderId = serviceProviderId;
-    }
-
-    const [total, active, used, expired, cancelled] = await Promise.all([
-      this.referenceRepo.count({ where: whereClause }),
-      this.referenceRepo.count({
-        where: { ...whereClause, status: ReferenceStatus.ACTIVE },
-      }),
-      this.referenceRepo.count({
-        where: { ...whereClause, status: ReferenceStatus.USED },
-      }),
-      this.referenceRepo.count({
-        where: { ...whereClause, status: ReferenceStatus.EXPIRED },
-      }),
-      this.referenceRepo.count({
-        where: { ...whereClause, status: ReferenceStatus.CANCELLED },
-      }),
-    ]);
-
-    // Get amount statistics
-    const amountStats = await this.referenceRepo
+    // Amounts are derived from ref.totalPaid (incremented on every successful
+    // payment), not from the reference status, so installments and partial
+    // payments are counted as collected.
+    const qb = this.referenceRepo
       .createQueryBuilder('ref')
-      .select('SUM(ref.amount)', 'totalAmount')
+      .select('COUNT(*)', 'total')
       .addSelect(
-        'SUM(CASE WHEN ref.status = :used THEN ref.amount ELSE 0 END)',
-        'paidAmount',
+        'SUM(CASE WHEN ref.status = :active THEN 1 ELSE 0 END)',
+        'active',
+      )
+      .addSelect('SUM(CASE WHEN ref.status = :used THEN 1 ELSE 0 END)', 'used')
+      .addSelect(
+        'SUM(CASE WHEN ref.status = :expired THEN 1 ELSE 0 END)',
+        'expired',
       )
       .addSelect(
-        'SUM(CASE WHEN ref.status = :active THEN ref.amount ELSE 0 END)',
+        'SUM(CASE WHEN ref.status = :cancelled THEN 1 ELSE 0 END)',
+        'cancelled',
+      )
+      .addSelect(
+        'SUM(CASE WHEN ref.totalPaid >= ref.amount THEN 1 ELSE 0 END)',
+        'fullyPaid',
+      )
+      .addSelect(
+        'SUM(CASE WHEN ref.totalPaid > 0 AND ref.totalPaid < ref.amount THEN 1 ELSE 0 END)',
+        'partiallyPaid',
+      )
+      .addSelect('SUM(CASE WHEN ref.totalPaid = 0 THEN 1 ELSE 0 END)', 'unpaid')
+      .addSelect('COALESCE(SUM(ref.amount), 0)', 'totalAmount')
+      .addSelect('COALESCE(SUM(ref.totalPaid), 0)', 'paidAmount')
+      .addSelect(
+        'COALESCE(SUM(CASE WHEN ref.status = :active THEN GREATEST(ref.amount - ref.totalPaid, 0) ELSE 0 END), 0)',
         'pendingAmount',
       )
       .addSelect(
-        'SUM(CASE WHEN ref.status = :expired THEN ref.amount ELSE 0 END)',
+        'COALESCE(SUM(CASE WHEN ref.status = :expired THEN GREATEST(ref.amount - ref.totalPaid, 0) ELSE 0 END), 0)',
         'expiredAmount',
       )
       .where('ref.createdAt BETWEEN :startDate AND :endDate', {
         startDate,
         endDate,
       })
-      .andWhere(serviceProviderId ? 'ref.serviceProviderId = :serviceProviderId' : '1=1', {
-        serviceProviderId,
-      })
-      .setParameter('used', ReferenceStatus.USED)
-      .setParameter('active', ReferenceStatus.ACTIVE)
-      .setParameter('expired', ReferenceStatus.EXPIRED)
-      .getRawOne();
+      .setParameters({
+        active: ReferenceStatus.ACTIVE,
+        used: ReferenceStatus.USED,
+        expired: ReferenceStatus.EXPIRED,
+        cancelled: ReferenceStatus.CANCELLED,
+      });
 
-    const collectionRate = total > 0 ? ((used / total) * 100).toFixed(2) : '0.00';
+    if (serviceProviderId) {
+      qb.andWhere('ref.serviceProviderId = :serviceProviderId', {
+        serviceProviderId,
+      });
+    }
+
+    const raw = await qb.getRawOne();
+
+    const total = parseInt(raw?.total || '0', 10);
+    const totalAmount = parseFloat(raw?.totalAmount || '0');
+    const paidAmount = parseFloat(raw?.paidAmount || '0');
+
+    const collectionRate =
+      totalAmount > 0 ? ((paidAmount / totalAmount) * 100).toFixed(2) : '0.00';
 
     return {
       total,
-      active,
-      used,
-      expired,
-      cancelled,
+      active: parseInt(raw?.active || '0', 10),
+      used: parseInt(raw?.used || '0', 10),
+      expired: parseInt(raw?.expired || '0', 10),
+      cancelled: parseInt(raw?.cancelled || '0', 10),
+      fullyPaid: parseInt(raw?.fullyPaid || '0', 10),
+      partiallyPaid: parseInt(raw?.partiallyPaid || '0', 10),
+      unpaid: parseInt(raw?.unpaid || '0', 10),
       amounts: {
-        total: parseFloat(amountStats?.totalAmount || '0'),
-        paid: parseFloat(amountStats?.paidAmount || '0'),
-        pending: parseFloat(amountStats?.pendingAmount || '0'),
-        expired: parseFloat(amountStats?.expiredAmount || '0'),
+        total: totalAmount,
+        paid: paidAmount,
+        pending: parseFloat(raw?.pendingAmount || '0'),
+        expired: parseFloat(raw?.expiredAmount || '0'),
         currency: 'TZS',
       },
       collectionRate: parseFloat(collectionRate),
@@ -268,19 +281,16 @@ export class DashboardService {
       .addSelect('sp.spCode', 'spCode')
       .addSelect('COUNT(ref.id)', 'referencesCount')
       .addSelect('SUM(ref.amount)', 'totalAmount')
-      .addSelect(
-        'SUM(CASE WHEN ref.status = :used THEN ref.amount ELSE 0 END)',
-        'collectedAmount',
-      )
+      // Actual money received, so installments/partial payments are included
+      .addSelect('COALESCE(SUM(ref.totalPaid), 0)', 'collectedAmount')
       .where('ref.createdAt BETWEEN :startDate AND :endDate', {
         startDate,
         endDate,
       })
-      .setParameter('used', ReferenceStatus.USED)
       .groupBy('sp.id')
       .addGroupBy('sp.businessName')
       .addGroupBy('sp.spCode')
-      .orderBy('SUM(CASE WHEN ref.status = :used THEN ref.amount ELSE 0 END)', 'DESC')
+      .orderBy('SUM(ref.totalPaid)', 'DESC')
       .limit(limit)
       .getRawMany();
 

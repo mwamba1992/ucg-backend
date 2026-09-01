@@ -8,7 +8,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, FindOptionsWhere, LessThan, Between } from 'typeorm';
+import { Repository, FindOptionsWhere, LessThan } from 'typeorm';
 import { PaymentReference, ReferenceStatus, PaymentOption } from './entities/payment-reference.entity';
 import { ReferenceLineItem } from './entities/reference-line-item.entity';
 import { ReferenceBatch, BatchStatus } from './entities/reference-batch.entity';
@@ -19,6 +19,7 @@ import { BulkCreateReferenceDto } from './dto/bulk-create-reference.dto';
 import { BulkGenerateReferenceDto } from './dto/bulk-generate-reference.dto';
 import { ReferenceProducer } from './reference.producer';
 import { ServiceProvider } from '../service-provider/entities/service-provider.entity';
+import { Payment, PaymentStatus } from '../payment/entities/payment.entity';
 import { NotificationService } from '../notification/notification.service';
 import { SpReferenceQueryService } from '../service-provider/sp-reference-query.service';
 import * as crypto from 'crypto';
@@ -598,81 +599,198 @@ export class ReferenceService {
     startDate?: Date,
     endDate?: Date,
   ) {
-    const where: FindOptionsWhere<PaymentReference> = {};
+    // Single aggregate pass so that counts and amounts always describe the same
+    // rows. Money figures are derived from ref.totalPaid (incremented on every
+    // successful payment) instead of the reference status, so that partial
+    // payments and installments are reflected on the dashboard.
+    const qb = this.referenceRepository
+      .createQueryBuilder('ref')
+      .select('COUNT(*)', 'total')
+      .addSelect(
+        'SUM(CASE WHEN ref.status = :active THEN 1 ELSE 0 END)',
+        'active',
+      )
+      .addSelect('SUM(CASE WHEN ref.status = :used THEN 1 ELSE 0 END)', 'used')
+      .addSelect(
+        'SUM(CASE WHEN ref.status = :expired THEN 1 ELSE 0 END)',
+        'expired',
+      )
+      .addSelect(
+        'SUM(CASE WHEN ref.status = :cancelled THEN 1 ELSE 0 END)',
+        'cancelled',
+      )
+      .addSelect(
+        'SUM(CASE WHEN ref.totalPaid >= ref.amount THEN 1 ELSE 0 END)',
+        'fullyPaid',
+      )
+      .addSelect(
+        'SUM(CASE WHEN ref.totalPaid > 0 AND ref.totalPaid < ref.amount THEN 1 ELSE 0 END)',
+        'partiallyPaid',
+      )
+      .addSelect(
+        'SUM(CASE WHEN ref.totalPaid = 0 THEN 1 ELSE 0 END)',
+        'unpaid',
+      )
+      .addSelect('COALESCE(SUM(ref.amount), 0)', 'totalAmount')
+      .addSelect('COALESCE(SUM(ref.totalPaid), 0)', 'collectedAmount')
+      // Outstanding balance on references that can still be paid
+      .addSelect(
+        'COALESCE(SUM(CASE WHEN ref.status = :active THEN GREATEST(ref.amount - ref.totalPaid, 0) ELSE 0 END), 0)',
+        'pendingAmount',
+      )
+      .addSelect(
+        'COALESCE(SUM(CASE WHEN ref.status = :expired THEN GREATEST(ref.amount - ref.totalPaid, 0) ELSE 0 END), 0)',
+        'expiredAmount',
+      )
+      .addSelect(
+        'COALESCE(SUM(CASE WHEN ref.status = :cancelled THEN GREATEST(ref.amount - ref.totalPaid, 0) ELSE 0 END), 0)',
+        'cancelledAmount',
+      )
+      .setParameters({
+        active: ReferenceStatus.ACTIVE,
+        used: ReferenceStatus.USED,
+        expired: ReferenceStatus.EXPIRED,
+        cancelled: ReferenceStatus.CANCELLED,
+      });
 
     if (serviceProviderId) {
-      where.serviceProviderId = serviceProviderId;
+      qb.andWhere('ref.serviceProviderId = :serviceProviderId', {
+        serviceProviderId,
+      });
     }
 
     if (startDate && endDate) {
-      where.createdAt = Between(startDate, endDate);
+      qb.andWhere('ref.createdAt BETWEEN :startDate AND :endDate', {
+        startDate,
+        endDate,
+      });
     }
 
-    const [total, active, used, expired, cancelled] = await Promise.all([
-      this.referenceRepository.count({ where }),
-      this.referenceRepository.count({ where: { ...where, status: ReferenceStatus.ACTIVE } }),
-      this.referenceRepository.count({ where: { ...where, status: ReferenceStatus.USED } }),
-      this.referenceRepository.count({ where: { ...where, status: ReferenceStatus.EXPIRED } }),
-      this.referenceRepository.count({ where: { ...where, status: ReferenceStatus.CANCELLED } }),
-    ]);
+    const raw = await qb.getRawOne();
 
-    // Get amount statistics if serviceProviderId is provided
-    let amounts = {
-      totalAmount: 0,
-      collectedAmount: 0,
-      pendingAmount: 0,
-      expiredAmount: 0,
+    const total = parseInt(raw?.total || '0', 10);
+    const totalAmount = parseFloat(raw?.totalAmount || '0');
+    const collectedAmount = parseFloat(raw?.collectedAmount || '0');
+
+    const amounts = {
+      totalAmount,
+      collectedAmount,
+      pendingAmount: parseFloat(raw?.pendingAmount || '0'),
+      expiredAmount: parseFloat(raw?.expiredAmount || '0'),
+      cancelledAmount: parseFloat(raw?.cancelledAmount || '0'),
       currency: 'TZS',
     };
-
-    if (serviceProviderId) {
-      const amountQuery = await this.referenceRepository
-        .createQueryBuilder('ref')
-        .select('SUM(ref.amount)', 'total')
-        .addSelect(
-          'SUM(CASE WHEN ref.status = :used THEN ref.amount ELSE 0 END)',
-          'collected',
-        )
-        .addSelect(
-          'SUM(CASE WHEN ref.status = :active THEN ref.amount ELSE 0 END)',
-          'pending',
-        )
-        .where('ref.serviceProviderId = :serviceProviderId', { serviceProviderId })
-        .setParameter('used', ReferenceStatus.USED)
-        .setParameter('active', ReferenceStatus.ACTIVE)
-        .getRawOne();
-
-      amounts = {
-        totalAmount: parseFloat(amountQuery.total) || 0,
-        collectedAmount: parseFloat(amountQuery.collected) || 0,
-        pendingAmount: parseFloat(amountQuery.pending) || 0,
-        expiredAmount: 0,
-        currency: 'TZS',
-      };
-    }
 
     const period = {
       startDate: startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
       endDate: endDate || new Date(),
     };
 
+    const [generatedToday, collectedToday] = await Promise.all([
+      this.countReferencesGeneratedToday(serviceProviderId),
+      this.sumPaymentsCollectedToday(serviceProviderId),
+    ]);
+
+    const periodDays = Math.max(
+      1,
+      Math.ceil(
+        (period.endDate.getTime() - period.startDate.getTime()) /
+          (24 * 60 * 60 * 1000),
+      ),
+    );
+
     return {
       period,
+      // Flat aliases for dashboard cards (kept alongside the nested shape)
+      totalReferences: total,
+      activeReferences: parseInt(raw?.active || '0', 10),
+      paidReferences: parseInt(raw?.fullyPaid || '0', 10),
+      partiallyPaidReferences: parseInt(raw?.partiallyPaid || '0', 10),
+      totalAmount,
+      collectedAmount,
+      pendingAmount: amounts.pendingAmount,
+      collectionRate:
+        totalAmount > 0
+          ? Number(((collectedAmount / totalAmount) * 100).toFixed(2))
+          : 0,
       summary: {
         totalGenerated: total,
-        active,
-        used,
-        expired,
-        cancelled,
+        active: parseInt(raw?.active || '0', 10),
+        used: parseInt(raw?.used || '0', 10),
+        expired: parseInt(raw?.expired || '0', 10),
+        cancelled: parseInt(raw?.cancelled || '0', 10),
+        // Payment-based counts. A reference can be paid while still ACTIVE when
+        // the payment option allows installments (PARTIAL/LIMITED/PERPETUAL),
+        // so status counts alone under-report what has actually been paid.
+        fullyPaid: parseInt(raw?.fullyPaid || '0', 10),
+        partiallyPaid: parseInt(raw?.partiallyPaid || '0', 10),
+        unpaid: parseInt(raw?.unpaid || '0', 10),
       },
       amounts,
       trends: {
-        generatedToday: 0,
-        collectedToday: 0,
-        averagePerDay: total / 30,
-        collectionRate: total > 0 ? ((used / total) * 100).toFixed(2) : 0,
+        generatedToday,
+        collectedToday,
+        averagePerDay: Number((total / periodDays).toFixed(2)),
+        // Value-based collection rate, consistent with the reports module
+        collectionRate:
+          totalAmount > 0
+            ? Number(((collectedAmount / totalAmount) * 100).toFixed(2))
+            : 0,
       },
     };
+  }
+
+  /**
+   * Count references generated since midnight
+   */
+  private async countReferencesGeneratedToday(
+    serviceProviderId?: string,
+  ): Promise<number> {
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const qb = this.referenceRepository
+      .createQueryBuilder('ref')
+      .where('ref.createdAt >= :startOfDay', { startOfDay });
+
+    if (serviceProviderId) {
+      qb.andWhere('ref.serviceProviderId = :serviceProviderId', {
+        serviceProviderId,
+      });
+    }
+
+    return qb.getCount();
+  }
+
+  /**
+   * Sum successful payments received since midnight
+   */
+  private async sumPaymentsCollectedToday(
+    serviceProviderId?: string,
+  ): Promise<number> {
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const qb = this.referenceRepository.manager
+      .createQueryBuilder()
+      .select('COALESCE(SUM(payment.amountPaid), 0)', 'amount')
+      .from(Payment, 'payment')
+      .innerJoin(
+        PaymentReference,
+        'ref',
+        'ref.referenceNumber = payment.referenceNumber',
+      )
+      .where('payment.paidAt >= :startOfDay', { startOfDay })
+      .andWhere('payment.status = :status', { status: PaymentStatus.SUCCESS });
+
+    if (serviceProviderId) {
+      qb.andWhere('ref.serviceProviderId = :serviceProviderId', {
+        serviceProviderId,
+      });
+    }
+
+    const raw = await qb.getRawOne();
+    return parseFloat(raw?.amount || '0');
   }
 
   /**
