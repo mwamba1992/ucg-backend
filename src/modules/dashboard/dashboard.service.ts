@@ -1,14 +1,27 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between } from 'typeorm';
+import { Repository, SelectQueryBuilder } from 'typeorm';
 import { PaymentReference, ReferenceStatus } from '../reference/entities/payment-reference.entity';
 import { Payment, PaymentStatus } from '../payment/entities/payment.entity';
 import { ServiceProvider } from '../service-provider/entities/service-provider.entity';
+import {
+  applyPeriodFilter,
+  resolvePeriod,
+  serializePeriod,
+  ResolvedPeriod,
+} from './dashboard-period.util';
 
 export interface DashboardQuery {
+  /** Named window: today | 7d | 30d | 90d | 180d | 365d | all. */
+  period?: string;
+  /** Arbitrary rolling window in days, for anything the presets miss. */
+  days?: number | string;
   startDate?: Date;
   endDate?: Date;
   serviceProviderId?: string;
+  /** Internal: a window already resolved by the caller, so composed
+   *  dashboards report one period instead of resolving it three times. */
+  resolvedPeriod?: ResolvedPeriod;
 }
 
 @Injectable()
@@ -26,11 +39,8 @@ export class DashboardService {
    * Get comprehensive dashboard overview
    */
   async getOverview(query: DashboardQuery = {}) {
-    const { startDate, endDate, serviceProviderId } = query;
-
-    // Default to last 30 days if no dates provided
-    const start = startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const end = endDate || new Date();
+    const { serviceProviderId } = query;
+    const period = query.resolvedPeriod ?? resolvePeriod(query);
 
     const [
       referencesStats,
@@ -40,19 +50,16 @@ export class DashboardService {
       topServiceProviders,
       statusBreakdown,
     ] = await Promise.all([
-      this.getReferencesStatistics(start, end, serviceProviderId),
-      this.getPaymentsStatistics(start, end, serviceProviderId),
+      this.getReferencesStatistics(period, serviceProviderId),
+      this.getPaymentsStatistics(period, serviceProviderId),
       this.getRecentReferences(10, serviceProviderId),
       this.getRecentPayments(10, serviceProviderId),
-      this.getTopServiceProviders(5, start, end),
-      this.getStatusBreakdown(start, end, serviceProviderId),
+      this.getTopServiceProviders(5, period),
+      this.getStatusBreakdown(period, serviceProviderId),
     ]);
 
     return {
-      period: {
-        startDate: start,
-        endDate: end,
-      },
+      period: serializePeriod(period),
       references: referencesStats,
       payments: paymentsStats,
       recentActivity: {
@@ -69,8 +76,7 @@ export class DashboardService {
    * Get references statistics
    */
   private async getReferencesStatistics(
-    startDate: Date,
-    endDate: Date,
+    period: ResolvedPeriod,
     serviceProviderId?: string,
   ) {
     // Amounts are derived from ref.totalPaid (incremented on every successful
@@ -111,16 +117,14 @@ export class DashboardService {
         'COALESCE(SUM(CASE WHEN ref.status = :expired THEN GREATEST(ref.amount - ref.totalPaid, 0) ELSE 0 END), 0)',
         'expiredAmount',
       )
-      .where('ref.createdAt BETWEEN :startDate AND :endDate', {
-        startDate,
-        endDate,
-      })
       .setParameters({
         active: ReferenceStatus.ACTIVE,
         used: ReferenceStatus.USED,
         expired: ReferenceStatus.EXPIRED,
         cancelled: ReferenceStatus.CANCELLED,
       });
+
+    applyPeriodFilter(qb, 'ref.createdAt', period);
 
     if (serviceProviderId) {
       qb.andWhere('ref.serviceProviderId = :serviceProviderId', {
@@ -161,17 +165,14 @@ export class DashboardService {
    * Get payments statistics
    */
   private async getPaymentsStatistics(
-    startDate: Date,
-    endDate: Date,
+    period: ResolvedPeriod,
     serviceProviderId?: string,
   ) {
     const queryBuilder = this.paymentRepo
       .createQueryBuilder('payment')
-      .leftJoin('payment.reference', 'ref')
-      .where('payment.paidAt BETWEEN :startDate AND :endDate', {
-        startDate,
-        endDate,
-      });
+      .leftJoin('payment.reference', 'ref');
+
+    applyPeriodFilter(queryBuilder, 'payment.paidAt', period);
 
     if (serviceProviderId) {
       queryBuilder.andWhere('ref.serviceProviderId = :serviceProviderId', {
@@ -268,12 +269,8 @@ export class DashboardService {
   /**
    * Get top service providers by volume
    */
-  private async getTopServiceProviders(
-    limit: number,
-    startDate: Date,
-    endDate: Date,
-  ) {
-    const results = await this.referenceRepo
+  private async getTopServiceProviders(limit: number, period: ResolvedPeriod) {
+    const qb = this.referenceRepo
       .createQueryBuilder('ref')
       .leftJoin('ref.serviceProvider', 'sp')
       .select('sp.id', 'id')
@@ -282,11 +279,11 @@ export class DashboardService {
       .addSelect('COUNT(ref.id)', 'referencesCount')
       .addSelect('SUM(ref.amount)', 'totalAmount')
       // Actual money received, so installments/partial payments are included
-      .addSelect('COALESCE(SUM(ref.totalPaid), 0)', 'collectedAmount')
-      .where('ref.createdAt BETWEEN :startDate AND :endDate', {
-        startDate,
-        endDate,
-      })
+      .addSelect('COALESCE(SUM(ref.totalPaid), 0)', 'collectedAmount');
+
+    applyPeriodFilter(qb, 'ref.createdAt', period);
+
+    const results = await qb
       .groupBy('sp.id')
       .addGroupBy('sp.businessName')
       .addGroupBy('sp.spCode')
@@ -312,19 +309,16 @@ export class DashboardService {
    * Get status breakdown
    */
   private async getStatusBreakdown(
-    startDate: Date,
-    endDate: Date,
+    period: ResolvedPeriod,
     serviceProviderId?: string,
   ) {
     const queryBuilder = this.referenceRepo
       .createQueryBuilder('ref')
       .select('ref.status', 'status')
       .addSelect('COUNT(*)', 'count')
-      .addSelect('SUM(ref.amount)', 'amount')
-      .where('ref.createdAt BETWEEN :startDate AND :endDate', {
-        startDate,
-        endDate,
-      });
+      .addSelect('SUM(ref.amount)', 'amount');
+
+    applyPeriodFilter(queryBuilder, 'ref.createdAt', period);
 
     if (serviceProviderId) {
       queryBuilder.andWhere('ref.serviceProviderId = :serviceProviderId', {
@@ -345,51 +339,42 @@ export class DashboardService {
    * Get daily trends
    */
   async getDailyTrends(query: DashboardQuery = {}) {
-    const { startDate, endDate, serviceProviderId } = query;
-
-    const start = startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const end = endDate || new Date();
+    const { serviceProviderId } = query;
+    const period = query.resolvedPeriod ?? resolvePeriod(query);
 
     // References trend
-    const referencesTrend = await this.referenceRepo
+    const referencesQb = this.referenceRepo
       .createQueryBuilder('ref')
       .select("DATE(ref.createdAt)", 'date')
       .addSelect('COUNT(*)', 'count')
       .addSelect('SUM(ref.amount)', 'amount')
-      .where('ref.createdAt BETWEEN :startDate AND :endDate', {
-        startDate: start,
-        endDate: end,
-      })
       .andWhere(serviceProviderId ? 'ref.serviceProviderId = :serviceProviderId' : '1=1', {
         serviceProviderId,
-      })
+      });
+
+    const referencesTrend = await applyPeriodFilter(referencesQb, 'ref.createdAt', period)
       .groupBy('DATE(ref.createdAt)')
       .orderBy('DATE(ref.createdAt)', 'ASC')
       .getRawMany();
 
     // Payments trend
-    const paymentsTrend = await this.paymentRepo
+    const paymentsQb = this.paymentRepo
       .createQueryBuilder('payment')
       .leftJoin('payment.reference', 'ref')
       .select("DATE(payment.paidAt)", 'date')
       .addSelect('COUNT(*)', 'count')
       .addSelect('SUM(payment.amountPaid)', 'amount')
-      .where('payment.paidAt BETWEEN :startDate AND :endDate', {
-        startDate: start,
-        endDate: end,
-      })
       .andWhere(serviceProviderId ? 'ref.serviceProviderId = :serviceProviderId' : '1=1', {
         serviceProviderId,
-      })
+      });
+
+    const paymentsTrend = await applyPeriodFilter(paymentsQb, 'payment.paidAt', period)
       .groupBy('DATE(payment.paidAt)')
       .orderBy('DATE(payment.paidAt)', 'ASC')
       .getRawMany();
 
     return {
-      period: {
-        startDate: start,
-        endDate: end,
-      },
+      period: serializePeriod(period),
       references: referencesTrend.map(item => ({
         date: item.date,
         count: parseInt(item.count),
@@ -407,61 +392,53 @@ export class DashboardService {
    * Get detailed reference analytics
    */
   async getReferenceAnalytics(query: DashboardQuery = {}) {
-    const { startDate, endDate, serviceProviderId } = query;
+    const { serviceProviderId } = query;
+    const period = query.resolvedPeriod ?? resolvePeriod(query);
 
-    const start = startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const end = endDate || new Date();
-
-    const whereClause: any = {
-      createdAt: Between(start, end),
-    };
-
-    if (serviceProviderId) {
-      whereClause.serviceProviderId = serviceProviderId;
-    }
+    const scopeToProvider = <T extends object>(qb: SelectQueryBuilder<T>) =>
+      applyPeriodFilter(
+        qb.andWhere(
+          serviceProviderId ? 'ref.serviceProviderId = :serviceProviderId' : '1=1',
+          { serviceProviderId },
+        ),
+        'ref.createdAt',
+        period,
+      );
 
     // Payment option breakdown
-    const paymentOptionBreakdown = await this.referenceRepo
-      .createQueryBuilder('ref')
-      .select('ref.paymentOption', 'paymentOption')
-      .addSelect('COUNT(*)', 'count')
-      .addSelect('SUM(ref.amount)', 'amount')
-      .where('ref.createdAt BETWEEN :startDate AND :endDate', {
-        startDate: start,
-        endDate: end,
-      })
-      .andWhere(serviceProviderId ? 'ref.serviceProviderId = :serviceProviderId' : '1=1', {
-        serviceProviderId,
-      })
+    const paymentOptionBreakdown = await scopeToProvider(
+      this.referenceRepo
+        .createQueryBuilder('ref')
+        .select('ref.paymentOption', 'paymentOption')
+        .addSelect('COUNT(*)', 'count')
+        .addSelect('SUM(ref.amount)', 'amount'),
+    )
       .groupBy('ref.paymentOption')
       .getRawMany();
 
     // Average amounts
-    const avgStats = await this.referenceRepo
-      .createQueryBuilder('ref')
-      .select('AVG(ref.amount)', 'avgAmount')
-      .addSelect('MIN(ref.amount)', 'minAmount')
-      .addSelect('MAX(ref.amount)', 'maxAmount')
-      .where(whereClause)
-      .getRawOne();
+    const avgStats = await scopeToProvider(
+      this.referenceRepo
+        .createQueryBuilder('ref')
+        .select('AVG(ref.amount)', 'avgAmount')
+        .addSelect('MIN(ref.amount)', 'minAmount')
+        .addSelect('MAX(ref.amount)', 'maxAmount'),
+    ).getRawOne();
 
     // Installment statistics
-    const installmentStats = await this.referenceRepo
-      .createQueryBuilder('ref')
-      .select('AVG(ref.installmentCount)', 'avgInstallments')
-      .addSelect('MAX(ref.installmentCount)', 'maxInstallments')
-      .addSelect(
-        'COUNT(CASE WHEN ref.installmentCount > 1 THEN 1 END)',
-        'multipleInstallmentCount',
-      )
-      .where(whereClause)
-      .getRawOne();
+    const installmentStats = await scopeToProvider(
+      this.referenceRepo
+        .createQueryBuilder('ref')
+        .select('AVG(ref.installmentCount)', 'avgInstallments')
+        .addSelect('MAX(ref.installmentCount)', 'maxInstallments')
+        .addSelect(
+          'COUNT(CASE WHEN ref.installmentCount > 1 THEN 1 END)',
+          'multipleInstallmentCount',
+        ),
+    ).getRawOne();
 
     return {
-      period: {
-        startDate: start,
-        endDate: end,
-      },
+      period: serializePeriod(period),
       paymentOptions: paymentOptionBreakdown.map(item => ({
         option: item.paymentOption,
         count: parseInt(item.count),
@@ -487,22 +464,22 @@ export class DashboardService {
    * Get service provider dashboard
    */
   async getServiceProviderDashboard(serviceProviderId: string, query: DashboardQuery = {}) {
-    const { startDate, endDate } = query;
-
-    const start = startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const end = endDate || new Date();
+    // Resolve once so overview, trends and analytics all report the same window.
+    const period = query.resolvedPeriod ?? resolvePeriod(query);
+    const scoped: DashboardQuery = { resolvedPeriod: period, serviceProviderId };
 
     const [serviceProvider, overview, trends, analytics] = await Promise.all([
       this.serviceProviderRepo.findOne({
         where: { id: serviceProviderId },
         relations: ['contact', 'bankAccounts', 'settings'],
       }),
-      this.getOverview({ startDate: start, endDate: end, serviceProviderId }),
-      this.getDailyTrends({ startDate: start, endDate: end, serviceProviderId }),
-      this.getReferenceAnalytics({ startDate: start, endDate: end, serviceProviderId }),
+      this.getOverview(scoped),
+      this.getDailyTrends(scoped),
+      this.getReferenceAnalytics(scoped),
     ]);
 
     return {
+      period: serializePeriod(period),
       serviceProvider: {
         id: serviceProvider.id,
         businessName: serviceProvider.businessName,

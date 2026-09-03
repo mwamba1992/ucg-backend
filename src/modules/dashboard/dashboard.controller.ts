@@ -1,6 +1,7 @@
 import { Controller, Get, Query, Param, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
 import { DashboardService } from './dashboard.service';
+import { DEFAULT_PERIOD, PERIOD_OPTIONS } from './dashboard-period.util';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 
@@ -11,6 +12,22 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 export class DashboardController {
   constructor(private readonly dashboardService: DashboardService) {}
 
+  @Get('periods')
+  @ApiOperation({
+    summary: 'List the periods the dashboard supports',
+    description:
+      'Returns the selectable windows and which one is applied when no ' +
+      'period is supplied, so the UI can render the picker without ' +
+      'hardcoding the list.',
+  })
+  @ApiResponse({ status: 200, description: 'Available dashboard periods' })
+  getPeriods() {
+    return {
+      default: DEFAULT_PERIOD,
+      options: PERIOD_OPTIONS,
+    };
+  }
+
   @Get('overview')
   @ApiOperation({
     summary: 'Get comprehensive dashboard overview',
@@ -18,10 +35,25 @@ export class DashboardController {
       'Returns statistics for references, payments, recent activity, and top service providers',
   })
   @ApiQuery({
+    name: 'period',
+    required: false,
+    enum: ['today', '7d', '30d', '90d', '180d', '365d', 'all'],
+    description:
+      'Named window. Defaults to 30d. Use "all" for all-time figures. ' +
+      'The resolved window and the full list of options are returned as ' +
+      '`period` on the response.',
+  })
+  @ApiQuery({
+    name: 'days',
+    required: false,
+    type: Number,
+    description: 'Arbitrary rolling window in days (e.g. 45), for windows the presets do not cover',
+  })
+  @ApiQuery({
     name: 'startDate',
     required: false,
     type: String,
-    description: 'Start date (ISO 8601). Defaults to 30 days ago',
+    description: 'Start date (ISO 8601). Overrides period/days with a custom range',
   })
   @ApiQuery({
     name: 'endDate',
@@ -40,11 +72,15 @@ export class DashboardController {
     description: 'Dashboard overview data',
   })
   async getOverview(
+    @Query('period') period?: string,
+    @Query('days') days?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
     @Query('serviceProviderId') serviceProviderId?: string,
   ) {
     return await this.dashboardService.getOverview({
+      period,
+      days,
       startDate: startDate ? new Date(startDate) : undefined,
       endDate: endDate ? new Date(endDate) : undefined,
       serviceProviderId,
@@ -57,10 +93,25 @@ export class DashboardController {
     description: 'Returns day-by-day statistics for the specified period',
   })
   @ApiQuery({
+    name: 'period',
+    required: false,
+    enum: ['today', '7d', '30d', '90d', '180d', '365d', 'all'],
+    description:
+      'Named window. Defaults to 30d. Use "all" for all-time figures. ' +
+      'The resolved window and the full list of options are returned as ' +
+      '`period` on the response.',
+  })
+  @ApiQuery({
+    name: 'days',
+    required: false,
+    type: Number,
+    description: 'Arbitrary rolling window in days (e.g. 45), for windows the presets do not cover',
+  })
+  @ApiQuery({
     name: 'startDate',
     required: false,
     type: String,
-    description: 'Start date (ISO 8601). Defaults to 30 days ago',
+    description: 'Start date (ISO 8601). Overrides period/days with a custom range',
   })
   @ApiQuery({
     name: 'endDate',
@@ -79,11 +130,15 @@ export class DashboardController {
     description: 'Daily trends data',
   })
   async getDailyTrends(
+    @Query('period') period?: string,
+    @Query('days') days?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
     @Query('serviceProviderId') serviceProviderId?: string,
   ) {
     return await this.dashboardService.getDailyTrends({
+      period,
+      days,
       startDate: startDate ? new Date(startDate) : undefined,
       endDate: endDate ? new Date(endDate) : undefined,
       serviceProviderId,
@@ -97,10 +152,25 @@ export class DashboardController {
       'Returns payment option breakdown, amount statistics, and installment data',
   })
   @ApiQuery({
+    name: 'period',
+    required: false,
+    enum: ['today', '7d', '30d', '90d', '180d', '365d', 'all'],
+    description:
+      'Named window. Defaults to 30d. Use "all" for all-time figures. ' +
+      'The resolved window and the full list of options are returned as ' +
+      '`period` on the response.',
+  })
+  @ApiQuery({
+    name: 'days',
+    required: false,
+    type: Number,
+    description: 'Arbitrary rolling window in days (e.g. 45), for windows the presets do not cover',
+  })
+  @ApiQuery({
     name: 'startDate',
     required: false,
     type: String,
-    description: 'Start date (ISO 8601). Defaults to 30 days ago',
+    description: 'Start date (ISO 8601). Overrides period/days with a custom range',
   })
   @ApiQuery({
     name: 'endDate',
@@ -119,11 +189,15 @@ export class DashboardController {
     description: 'Reference analytics data',
   })
   async getReferenceAnalytics(
+    @Query('period') period?: string,
+    @Query('days') days?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
     @Query('serviceProviderId') serviceProviderId?: string,
   ) {
     return await this.dashboardService.getReferenceAnalytics({
+      period,
+      days,
       startDate: startDate ? new Date(startDate) : undefined,
       endDate: endDate ? new Date(endDate) : undefined,
       serviceProviderId,
@@ -137,10 +211,25 @@ export class DashboardController {
       'Returns complete dashboard for a specific service provider including overview, trends, and analytics',
   })
   @ApiQuery({
+    name: 'period',
+    required: false,
+    enum: ['today', '7d', '30d', '90d', '180d', '365d', 'all'],
+    description:
+      'Named window. Defaults to 30d. Use "all" for all-time figures. ' +
+      'The resolved window and the full list of options are returned as ' +
+      '`period` on the response.',
+  })
+  @ApiQuery({
+    name: 'days',
+    required: false,
+    type: Number,
+    description: 'Arbitrary rolling window in days (e.g. 45), for windows the presets do not cover',
+  })
+  @ApiQuery({
     name: 'startDate',
     required: false,
     type: String,
-    description: 'Start date (ISO 8601). Defaults to 30 days ago',
+    description: 'Start date (ISO 8601). Overrides period/days with a custom range',
   })
   @ApiQuery({
     name: 'endDate',
@@ -154,10 +243,14 @@ export class DashboardController {
   })
   async getServiceProviderDashboard(
     @Param('id') id: string,
+    @Query('period') period?: string,
+    @Query('days') days?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
   ) {
     return await this.dashboardService.getServiceProviderDashboard(id, {
+      period,
+      days,
       startDate: startDate ? new Date(startDate) : undefined,
       endDate: endDate ? new Date(endDate) : undefined,
     });

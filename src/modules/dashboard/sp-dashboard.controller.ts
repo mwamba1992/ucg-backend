@@ -62,6 +62,8 @@ export class SpDashboardController {
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async getOverview(
+    @Query('period') period?: string,
+    @Query('days') days?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
     @Request() req?: any,
@@ -70,6 +72,8 @@ export class SpDashboardController {
 
     const overview = await this.dashboardService.getOverview({
       serviceProviderId,
+      period,
+      days,
       startDate: startDate ? new Date(startDate) : undefined,
       endDate: endDate ? new Date(endDate) : undefined,
     });
@@ -90,7 +94,15 @@ export class SpDashboardController {
     summary: 'Get trends data',
     description: 'Get payment and reference trends over time for charts and graphs.',
   })
-  @ApiQuery({ name: 'period', required: false, enum: ['7days', '30days', '90days', 'year'], description: 'Time period for trends' })
+  @ApiQuery({
+    name: 'period',
+    required: false,
+    enum: ['today', '7d', '30d', '90d', '180d', '365d', 'all'],
+    description:
+      'Time period for trends. Defaults to 30d. Legacy values (7days, 30days, ' +
+      '90days, year) are still accepted. Use "all" for all-time.',
+  })
+  @ApiQuery({ name: 'days', required: false, type: Number, description: 'Arbitrary rolling window in days' })
   @ApiQuery({ name: 'startDate', required: false, description: 'Custom start date (ISO format)' })
   @ApiQuery({ name: 'endDate', required: false, description: 'Custom end date (ISO format)' })
   @ApiResponse({
@@ -116,6 +128,7 @@ export class SpDashboardController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async getTrends(
     @Query('period') period?: string,
+    @Query('days') days?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
     @Request() req?: any,
@@ -124,6 +137,8 @@ export class SpDashboardController {
 
     const trends = await this.dashboardService.getDailyTrends({
       serviceProviderId,
+      period,
+      days,
       startDate: startDate ? new Date(startDate) : undefined,
       endDate: endDate ? new Date(endDate) : undefined,
     });
@@ -168,6 +183,8 @@ export class SpDashboardController {
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async getReferenceAnalytics(
+    @Query('period') period?: string,
+    @Query('days') days?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
     @Request() req?: any,
@@ -176,6 +193,8 @@ export class SpDashboardController {
 
     const analytics = await this.dashboardService.getReferenceAnalytics({
       serviceProviderId,
+      period,
+      days,
       startDate: startDate ? new Date(startDate) : undefined,
       endDate: endDate ? new Date(endDate) : undefined,
     });
