@@ -65,6 +65,10 @@ export class ApefValidateAccountResponseDto {
   success: boolean;
   customerName?: string;
   amount?: number;
+  /** Smallest purchase APEF will accept for this account, when it declares one. */
+  minAmount?: number;
+  /** APEF's own collection account, echoed back on validation. */
+  collectionAccount?: string;
   currency?: string;
   billDescription?: string;
   rawResponse?: Record<string, any>;
@@ -113,6 +117,7 @@ export enum ApefErrorCode {
   APEF_VALIDATION_FAILED = 'APEF_VALIDATION_FAILED',
   APEF_TOKEN_ERROR = 'APEF_TOKEN_ERROR',
   DUPLICATE_TRANSACTION = 'DUPLICATE_TRANSACTION',
+  AMOUNT_BELOW_MINIMUM = 'AMOUNT_BELOW_MINIMUM',
   GL_DEPOSIT_FAILED = 'GL_DEPOSIT_FAILED',
   APEF_NOTIFICATION_FAILED = 'APEF_NOTIFICATION_FAILED',
   INTERNAL_ERROR = 'INTERNAL_ERROR',

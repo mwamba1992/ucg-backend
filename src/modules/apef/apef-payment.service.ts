@@ -1,10 +1,15 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { LessThan, Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import { ApefReference, ApefReferenceStatus } from './entities/apef-reference.entity';
-import { ApefPayment, ApefPaymentStatus, ApefChannel } from './entities/apef-payment.entity';
+import {
+  ApefPayment,
+  ApefPaymentStatus,
+  ApefChannel,
+  APEF_NOTIFICATION_MAX_RETRIES,
+} from './entities/apef-payment.entity';
 import { ApefClientService } from './apef-client.service';
 import { CBSService } from '../cbs/cbs.service';
 import { TransferType } from '../cbs/entities/cbs-transfer.entity';
@@ -104,6 +109,25 @@ export class ApefPaymentService {
         };
       }
 
+      // Step 4b: Honour the minimum APEF declares on validation. Doing this
+      // before the GL deposit means an under-minimum payment is rejected while
+      // the money is still with the PSP, instead of being banked and then
+      // rejected forever at the notification step.
+      const minAmount = Number(validationResult.minAmount);
+      if (Number.isFinite(minAmount) && minAmount > 0 && Number(dto.amount) < minAmount) {
+        this.logger.warn(
+          `APEF payment below minimum for ${dto.reference}: ` +
+          `requested=${dto.amount}, minimum=${minAmount} - rejecting before GL deposit`,
+        );
+        return {
+          success: false,
+          errorCode: ApefErrorCode.AMOUNT_BELOW_MINIMUM,
+          errorDescription:
+            `Minimum payment for this account is ${minAmount} ${validationResult.currency || 'TZS'}. ` +
+            `Received ${dto.amount}.`,
+        };
+      }
+
       // Step 5: Upsert APEF reference
       let apefReference = await this.apefReferenceRepo.findOne({
         where: { referenceNumber: dto.reference },
@@ -123,9 +147,15 @@ export class ApefPaymentService {
         apefReference = await this.apefReferenceRepo.save(apefReference);
         this.logger.log(`Created new APEF reference: ${apefReference.id}`);
       } else {
-        // Update validation info
+        // Update validation info. Backfill the descriptive fields too - they
+        // were stored as NULL while the response mapping was wrong.
         apefReference.apefValidationResponse = validationResult.rawResponse;
         apefReference.validatedAt = new Date();
+        apefReference.customerName =
+          validationResult.customerName ?? apefReference.customerName;
+        apefReference.billDescription =
+          validationResult.billDescription ?? apefReference.billDescription;
+        apefReference.amount = validationResult.amount ?? apefReference.amount;
         await this.apefReferenceRepo.save(apefReference);
         this.logger.log(`Updated existing APEF reference: ${apefReference.id}`);
       }
@@ -276,10 +306,16 @@ export class ApefPaymentService {
     });
 
     if (!fsp) {
-      return {
-        success: false,
-        error: `FSP not found for channel: ${dto.channel} (code: ${fspCode})`,
-      };
+      // The channel fallback resolves BANK/NORMAL to 'BANK', for which no FSP
+      // row exists, so say what IS configured rather than just what is missing.
+      const configured = await this.fspRepo.find({ select: ['fspCode'] });
+      const known = configured.map((f) => f.fspCode).join(', ') || 'none';
+      const error =
+        `FSP not found for channel: ${dto.channel} (code: ${fspCode}). ` +
+        `Configured FSP codes: ${known}. ` +
+        `Pass fspCode on the payment, or add an FSP row for '${fspCode}'.`;
+      this.logger.error(error);
+      return { success: false, error };
     }
 
     if (!fsp.glAccountNumber) {
@@ -446,9 +482,17 @@ export class ApefPaymentService {
   /**
    * Retry APEF notification for pending payments
    */
-  async retryPendingNotifications(): Promise<{ processed: number; succeeded: number; failed: number }> {
+  async retryPendingNotifications(): Promise<{
+    processed: number;
+    succeeded: number;
+    failed: number;
+    exhausted: number;
+  }> {
     const pendingPayments = await this.apefPaymentRepo.find({
-      where: { status: ApefPaymentStatus.PENDING_APEF_NOTIFICATION },
+      where: {
+        status: ApefPaymentStatus.PENDING_APEF_NOTIFICATION,
+        apefNotificationRetryCount: LessThan(APEF_NOTIFICATION_MAX_RETRIES),
+      },
       relations: ['apefReference'],
       take: 100, // Process in batches
     });
@@ -457,6 +501,7 @@ export class ApefPaymentService {
 
     let succeeded = 0;
     let failed = 0;
+    let exhausted = 0;
 
     for (const payment of pendingPayments) {
       const result = await this.sendApefNotification(payment, payment.apefReference);
@@ -473,11 +518,29 @@ export class ApefPaymentService {
       } else {
         payment.apefNotificationRetryCount += 1;
         payment.apefNotificationError = result.error;
+
+        // Out of attempts: park it so the job stops looping on a payment APEF
+        // is never going to accept, and so it stands out for manual handling.
+        // The money is already deposited - this is not a lost payment.
+        if (payment.apefNotificationRetryCount >= APEF_NOTIFICATION_MAX_RETRIES) {
+          payment.status = ApefPaymentStatus.NEEDS_ATTENTION;
+          exhausted++;
+          this.logger.error(
+            `APEF notification gave up after ${payment.apefNotificationRetryCount} attempts: ` +
+            `payment=${payment.id}, reference=${payment.apefReference?.referenceNumber}, ` +
+            `amount=${payment.paidAmount}, cbsRef=${payment.cbsReference}, ` +
+            `error: ${result.error}. Money is deposited - needs manual APEF settlement.`,
+          );
+        } else {
+          this.logger.warn(
+            `APEF notification retry failed: ${payment.id}, ` +
+            `attempt ${payment.apefNotificationRetryCount}/${APEF_NOTIFICATION_MAX_RETRIES}, ` +
+            `error: ${result.error}`,
+          );
+        }
+
         await this.apefPaymentRepo.save(payment);
         failed++;
-        this.logger.warn(
-          `APEF notification retry failed: ${payment.id}, attempt ${payment.apefNotificationRetryCount}`,
-        );
       }
     }
 
@@ -485,6 +548,7 @@ export class ApefPaymentService {
       processed: pendingPayments.length,
       succeeded,
       failed,
+      exhausted,
     };
   }
 
@@ -521,15 +585,17 @@ export class ApefPaymentService {
    * Get statistics
    */
   async getStatistics(): Promise<any> {
-    const [total, validated, glDeposited, pending, completed, revoked, rejected] = await Promise.all([
-      this.apefPaymentRepo.count(),
-      this.apefPaymentRepo.count({ where: { status: ApefPaymentStatus.VALIDATED } }),
-      this.apefPaymentRepo.count({ where: { status: ApefPaymentStatus.GL_DEPOSITED } }),
-      this.apefPaymentRepo.count({ where: { status: ApefPaymentStatus.PENDING_APEF_NOTIFICATION } }),
-      this.apefPaymentRepo.count({ where: { status: ApefPaymentStatus.COMPLETED } }),
-      this.apefPaymentRepo.count({ where: { status: ApefPaymentStatus.REVOKED } }),
-      this.apefPaymentRepo.count({ where: { status: ApefPaymentStatus.REJECTED } }),
-    ]);
+    const [total, validated, glDeposited, pending, completed, revoked, rejected, needsAttention] =
+      await Promise.all([
+        this.apefPaymentRepo.count(),
+        this.apefPaymentRepo.count({ where: { status: ApefPaymentStatus.VALIDATED } }),
+        this.apefPaymentRepo.count({ where: { status: ApefPaymentStatus.GL_DEPOSITED } }),
+        this.apefPaymentRepo.count({ where: { status: ApefPaymentStatus.PENDING_APEF_NOTIFICATION } }),
+        this.apefPaymentRepo.count({ where: { status: ApefPaymentStatus.COMPLETED } }),
+        this.apefPaymentRepo.count({ where: { status: ApefPaymentStatus.REVOKED } }),
+        this.apefPaymentRepo.count({ where: { status: ApefPaymentStatus.REJECTED } }),
+        this.apefPaymentRepo.count({ where: { status: ApefPaymentStatus.NEEDS_ATTENTION } }),
+      ]);
 
     return {
       total,
@@ -540,6 +606,7 @@ export class ApefPaymentService {
         completed,
         revoked,
         rejected,
+        needsAttention,
       },
       successRate: total > 0 ? ((completed / total) * 100).toFixed(2) : 0,
     };

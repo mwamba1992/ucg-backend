@@ -9,6 +9,9 @@ export interface UnifiedPaymentRequest {
   amount: number;
   externalTxnId: string;
   channel: string; // TIGO | VODA | BANK | NORMAL
+  /** Original FSP code from the PSP payload, e.g. MHB. Preferred over the
+   *  channel-derived fallback, which has no FSP row for BANK/NORMAL. */
+  fspCode?: string;
   rawPayload?: Record<string, any>;
   payerName?: string;
   payerPhone?: string;
@@ -91,6 +94,9 @@ export class PaymentRouterService {
       amount: request.amount,
       externalTxnId: request.externalTxnId,
       channel,
+      // Without this the APEF flow falls back to mapChannelToFspCode, which
+      // resolves BANK/NORMAL to a 'BANK' FSP code that does not exist.
+      fspCode: request.fspCode || this.mapChannelToFspCode(channel),
       rawPayload: request.rawPayload,
       payerName: request.payerName,
       payerPhone: request.payerPhone,

@@ -17,8 +17,25 @@ export enum ApefPaymentStatus {
   PENDING_APEF_NOTIFICATION = 'PENDING_APEF_NOTIFICATION', // APEF notification failed, awaiting retry
   COMPLETED = 'COMPLETED',           // Full cycle complete
   REVOKED = 'REVOKED',               // CBS/GL deposit failed - payment cancelled
-  REJECTED = 'REJECTED',             // APEF validation failed
+  REJECTED = 'REJECTED',             // APEF validation failed (no money moved)
+  NEEDS_ATTENTION = 'NEEDS_ATTENTION', // Money deposited, APEF notification permanently failed
 }
+
+/** Statuses the notification retry job will never pick up again. */
+export const APEF_TERMINAL_STATUSES = [
+  ApefPaymentStatus.COMPLETED,
+  ApefPaymentStatus.REVOKED,
+  ApefPaymentStatus.REJECTED,
+  ApefPaymentStatus.NEEDS_ATTENTION,
+];
+
+/**
+ * How many times the scheduler retries an APEF deposit notification before
+ * parking the payment in NEEDS_ATTENTION. At one attempt per 5 minutes this is
+ * roughly two hours of retrying, which comfortably covers a transient APEF
+ * outage while stopping a permanently-rejected payment from looping forever.
+ */
+export const APEF_NOTIFICATION_MAX_RETRIES = 24;
 
 export enum ApefChannel {
   TIGO = 'TIGO',

@@ -19,7 +19,9 @@ export class ApefNotificationScheduler {
   async handleRetryPendingNotifications() {
     // Prevent overlapping runs
     if (this.isRunning) {
-      this.logger.debug('APEF notification retry job already running, skipping');
+      // warn, not debug: overlapping runs mean a run is taking over 5 minutes,
+      // which is worth seeing in production logs.
+      this.logger.warn('APEF notification retry job already running, skipping');
       return;
     }
 
@@ -30,14 +32,14 @@ export class ApefNotificationScheduler {
 
       const result = await this.apefPaymentService.retryPendingNotifications();
 
-      if (result.processed > 0) {
-        this.logger.log(
-          `APEF notification retry completed: processed=${result.processed}, ` +
-          `succeeded=${result.succeeded}, failed=${result.failed}`,
-        );
-      } else {
-        this.logger.debug('No pending APEF notifications to retry');
-      }
+      // Always log at info. A silent apef log used to be ambiguous: nothing
+      // pending and the job never running looked exactly the same, because
+      // debug is dropped when LOG_LEVEL=info in production.
+      this.logger.log(
+        `APEF notification retry completed: processed=${result.processed}, ` +
+        `succeeded=${result.succeeded}, failed=${result.failed}, ` +
+        `exhausted=${result.exhausted}`,
+      );
     } catch (error) {
       this.logger.error(`APEF notification retry job failed: ${error.message}`, error.stack);
     } finally {

@@ -127,12 +127,19 @@ export class ApefClientService {
       // Parse response - adjust based on actual APEF API response structure
       const data = response.data;
 
+      // APEF returns investorName / paymentDescription / minAmount. The older
+      // generic key guesses below never matched, so customerName and amount
+      // were silently stored as NULL on every reference.
       return {
         success: true,
-        customerName: data.customerName || data.accountName || data.name,
-        amount: data.amount || data.billAmount,
+        customerName:
+          data.investorName || data.customerName || data.accountName || data.name,
+        amount: data.amount ?? data.billAmount,
+        minAmount: data.minAmount,
+        collectionAccount: data.collectionAccount,
         currency: data.currency || 'TZS',
-        billDescription: data.billDescription || data.description,
+        billDescription:
+          data.paymentDescription || data.billDescription || data.description,
         rawResponse: data,
       };
     } catch (error) {
