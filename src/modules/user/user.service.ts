@@ -7,11 +7,16 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Like, IsNull } from 'typeorm';
 import * as bcrypt from 'bcrypt';
-import { User, UserStatus } from './entities/user.entity';
+import { User, UserStatus, UserType } from './entities/user.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { QueryUserDto } from './dto/query-user.dto';
 import { RolesService } from '../permission/roles.service';
+
+export interface SpUserScope {
+  id: string;
+  email: string;
+}
 
 @Injectable()
 export class UserService {
@@ -54,7 +59,7 @@ export class UserService {
   /**
    * Find all users with pagination and filtering
    */
-  async findAll(query: QueryUserDto) {
+  async findAll(query: QueryUserDto, spScope?: SpUserScope) {
     const { page = 1, limit = 10, email, userType, role, status, search } = query;
 
     const where: any = {
@@ -80,6 +85,13 @@ export class UserService {
     // Build query
     const queryBuilder = this.userRepository.createQueryBuilder('user');
     queryBuilder.where(where);
+
+    if (spScope) {
+      queryBuilder.andWhere('(user.createdBy = :spId OR user.email = :spEmail)', {
+        spId: spScope.id,
+        spEmail: spScope.email,
+      });
+    }
 
     // Add search functionality
     if (search) {
@@ -108,6 +120,17 @@ export class UserService {
         totalPages: Math.ceil(total / limit),
       },
     };
+  }
+
+  /**
+   * Whether a user belongs to the given service provider. SP membership mirrors
+   * spLogin: the SP's main account shares the SP email, staff users are created by the SP.
+   */
+  belongsToServiceProvider(user: User, spScope: SpUserScope): boolean {
+    return (
+      user.userType === UserType.SERVICE_PROVIDER &&
+      (user.createdBy === spScope.id || user.email === spScope.email)
+    );
   }
 
   /**
@@ -238,26 +261,30 @@ export class UserService {
   /**
    * Get user statistics
    */
-  async getStatistics() {
-    const total = await this.userRepository.count({
-      where: { deletedAt: IsNull() },
-    });
+  async getStatistics(spScope?: SpUserScope) {
+    const count = (status?: UserStatus) => {
+      const qb = this.userRepository
+        .createQueryBuilder('user')
+        .where('user.deletedAt IS NULL');
+      if (status) {
+        qb.andWhere('user.status = :status', { status });
+      }
+      if (spScope) {
+        qb.andWhere('user.userType = :userType', { userType: UserType.SERVICE_PROVIDER }).andWhere(
+          '(user.createdBy = :spId OR user.email = :spEmail)',
+          { spId: spScope.id, spEmail: spScope.email },
+        );
+      }
+      return qb.getCount();
+    };
 
-    const active = await this.userRepository.count({
-      where: { status: UserStatus.ACTIVE, deletedAt: IsNull() },
-    });
-
-    const inactive = await this.userRepository.count({
-      where: { status: UserStatus.INACTIVE, deletedAt: IsNull() },
-    });
-
-    const suspended = await this.userRepository.count({
-      where: { status: UserStatus.SUSPENDED, deletedAt: IsNull() },
-    });
-
-    const pending = await this.userRepository.count({
-      where: { status: UserStatus.PENDING, deletedAt: IsNull() },
-    });
+    const [total, active, inactive, suspended, pending] = await Promise.all([
+      count(),
+      count(UserStatus.ACTIVE),
+      count(UserStatus.INACTIVE),
+      count(UserStatus.SUSPENDED),
+      count(UserStatus.PENDING),
+    ]);
 
     return {
       total,

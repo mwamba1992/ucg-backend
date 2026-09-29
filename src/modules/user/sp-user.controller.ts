@@ -12,15 +12,16 @@ import {
   HttpStatus,
   Request,
   BadRequestException,
+  NotFoundException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
-import { UserService } from './user.service';
+import { UserService, SpUserScope } from './user.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { QueryUserDto } from './dto/query-user.dto';
 import { UserResponseDto } from './dto/user-response.dto';
 import { SpJwtAuthGuard } from '../auth/guards/sp-jwt-auth.guard';
-import { UserType, UserRole, UserStatus } from './entities/user.entity';
+import { User, UserType, UserRole, UserStatus } from './entities/user.entity';
 
 /**
  * Service Provider User Controller
@@ -33,6 +34,19 @@ import { UserType, UserRole, UserStatus } from './entities/user.entity';
 @Controller('sp/users')
 export class SpUserController {
   constructor(private readonly userService: UserService) {}
+
+  private spScope(req: any): SpUserScope {
+    return { id: req.user.serviceProviderId, email: req.user.email };
+  }
+
+  /** Load a user, 404ing if it doesn't belong to the calling service provider. */
+  private async findOwnUser(id: string, req: any): Promise<User> {
+    const user = await this.userService.findOne(id);
+    if (!this.userService.belongsToServiceProvider(user, this.spScope(req))) {
+      throw new NotFoundException(`User with ID ${id} not found`);
+    }
+    return user;
+  }
 
   @Post()
   @ApiOperation({ summary: 'Create a new user for service provider' })
@@ -72,11 +86,11 @@ export class SpUserController {
   @ApiOperation({ summary: 'Get all users for this service provider' })
   @ApiResponse({ status: 200, description: 'Users retrieved successfully' })
   async findAll(@Query() query: QueryUserDto, @Request() req: any) {
-    // Filter to only show SERVICE_PROVIDER users
-    const result = await this.userService.findAll({
-      ...query,
-      userType: UserType.SERVICE_PROVIDER,
-    });
+    // Only this service provider's own users
+    const result = await this.userService.findAll(
+      { ...query, userType: UserType.SERVICE_PROVIDER },
+      this.spScope(req),
+    );
 
     return {
       ...result,
@@ -87,8 +101,8 @@ export class SpUserController {
   @Get('statistics')
   @ApiOperation({ summary: 'Get user statistics for this service provider' })
   @ApiResponse({ status: 200, description: 'Statistics retrieved successfully' })
-  async getStatistics() {
-    return await this.userService.getStatistics();
+  async getStatistics(@Request() req: any) {
+    return await this.userService.getStatistics(this.spScope(req));
   }
 
   @Get(':id')
@@ -96,13 +110,7 @@ export class SpUserController {
   @ApiResponse({ status: 200, description: 'User retrieved successfully', type: UserResponseDto })
   @ApiResponse({ status: 404, description: 'User not found' })
   async findOne(@Param('id') id: string, @Request() req: any): Promise<UserResponseDto> {
-    const user = await this.userService.findOne(id);
-
-    // Ensure the user is a SERVICE_PROVIDER user
-    if (user.userType !== UserType.SERVICE_PROVIDER) {
-      throw new BadRequestException('Cannot access non-service provider users');
-    }
-
+    const user = await this.findOwnUser(id, req);
     return new UserResponseDto(user);
   }
 
@@ -117,12 +125,8 @@ export class SpUserController {
   ): Promise<UserResponseDto> {
     const serviceProviderId = req.user.serviceProviderId;
 
-    // Fetch the user first to verify it belongs to this SP
-    const existingUser = await this.userService.findOne(id);
-
-    if (existingUser.userType !== UserType.SERVICE_PROVIDER) {
-      throw new BadRequestException('Cannot update non-service provider users');
-    }
+    // Verify the user belongs to this SP
+    await this.findOwnUser(id, req);
 
     // Prevent changing userType
     if (updateUserDto.userType && updateUserDto.userType !== UserType.SERVICE_PROVIDER) {
@@ -148,13 +152,8 @@ export class SpUserController {
     @Body('status') status: UserStatus,
     @Request() req: any,
   ): Promise<UserResponseDto> {
-    // Verify user is SERVICE_PROVIDER type
-    const existingUser = await this.userService.findOne(id);
-
-    if (existingUser.userType !== UserType.SERVICE_PROVIDER) {
-      throw new BadRequestException('Cannot update non-service provider users');
-    }
-
+    // Verify the user belongs to this SP
+    await this.findOwnUser(id, req);
     const user = await this.userService.updateStatus(id, status);
     return new UserResponseDto(user);
   }
@@ -165,13 +164,8 @@ export class SpUserController {
   @ApiResponse({ status: 204, description: 'User deleted successfully' })
   @ApiResponse({ status: 404, description: 'User not found' })
   async remove(@Param('id') id: string, @Request() req: any): Promise<void> {
-    // Verify user is SERVICE_PROVIDER type
-    const existingUser = await this.userService.findOne(id);
-
-    if (existingUser.userType !== UserType.SERVICE_PROVIDER) {
-      throw new BadRequestException('Cannot delete non-service provider users');
-    }
-
+    // Verify the user belongs to this SP
+    await this.findOwnUser(id, req);
     await this.userService.remove(id);
   }
 }
