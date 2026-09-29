@@ -65,5 +65,13 @@ export class UserResponseDto {
 
   constructor(partial: Partial<UserResponseDto>) {
     Object.assign(this, partial);
+    // No ClassSerializerInterceptor is registered, so @Exclude() has no effect;
+    // strip credentials explicitly. PSP API keys are only returned on create/regenerate.
+    const self = this as any;
+    delete self.password;
+    delete self.refreshToken;
+    delete self.resetPasswordToken;
+    delete self.resetPasswordExpires;
+    delete self.apiKey;
   }
 }

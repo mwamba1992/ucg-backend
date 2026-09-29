@@ -119,6 +119,13 @@ export class UserService {
         limit,
         totalPages: Math.ceil(total / limit),
       },
+      // Same values under `meta`, which the admin portal's user list reads.
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
     };
   }
 
