@@ -2,7 +2,10 @@ import { Injectable, ExecutionContext } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { Reflector } from '@nestjs/core';
 import { Observable } from 'rxjs';
+import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
+import { SpJwtAuthGuard } from './sp-jwt-auth.guard';
+import { PspApiAuthGuard } from './psp-api-auth.guard';
 
 @Injectable()
 export class JwtAuthGuard extends AuthGuard('jwt') {
@@ -29,17 +32,15 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       return true;
     }
 
-    // Skip this guard for SP routes - SpJwtAuthGuard will handle them
-    // IMPORTANT: Don't return true (which allows access), return false to skip this guard
-    // The SpJwtAuthGuard decorator on the controller will handle SP authentication
-    if (path.includes('/sp/')) {
-      return true; // Allow the route-specific SpJwtAuthGuard to handle auth
-    }
-
-    // Skip this guard for PSP routes - PspApiAuthGuard will handle them
-    // PSP routes use API key authentication, not JWT
-    if (path.includes('/psp/')) {
-      return true; // Allow the route-specific PspApiAuthGuard to handle auth
+    // SP and PSP routes authenticate with their own guard (SpJwtAuthGuard / PspApiAuthGuard).
+    // Decide from the route's declared guards, never from the URL: a substring check on
+    // request.url (which includes the query string) let `?x=/sp/` skip auth on admin routes.
+    const routeGuards = [
+      ...(this.reflector.get<any[]>(GUARDS_METADATA, context.getClass()) || []),
+      ...(this.reflector.get<any[]>(GUARDS_METADATA, context.getHandler()) || []),
+    ];
+    if (routeGuards.some((guard) => guard === SpJwtAuthGuard || guard === PspApiAuthGuard)) {
+      return true;
     }
 
     return super.canActivate(context);

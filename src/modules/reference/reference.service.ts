@@ -372,6 +372,16 @@ export class ReferenceService {
     // instead of validating against our database.
     const externalSp = await this.spReferenceQueryService.findSpByReference(referenceNumber);
     if (externalSp) {
+      // An SP may only look up its own external references.
+      if (serviceProviderId && externalSp.id !== serviceProviderId) {
+        return {
+          isValid: false,
+          referenceNumber,
+          status: null,
+          reason: 'Reference not found',
+        };
+      }
+
       const result = await this.spReferenceQueryService.queryReference(referenceNumber);
       return {
         isValid: result.isValid,

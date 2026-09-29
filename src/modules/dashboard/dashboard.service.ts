@@ -54,7 +54,8 @@ export class DashboardService {
       this.getPaymentsStatistics(period, serviceProviderId),
       this.getRecentReferences(10, serviceProviderId),
       this.getRecentPayments(10, serviceProviderId),
-      this.getTopServiceProviders(5, period),
+      // Cross-SP ranking is admin-only; an SP must not see other SPs' figures.
+      serviceProviderId ? Promise.resolve([]) : this.getTopServiceProviders(5, period),
       this.getStatusBreakdown(period, serviceProviderId),
     ]);
 
