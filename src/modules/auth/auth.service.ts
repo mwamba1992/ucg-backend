@@ -827,6 +827,57 @@ export class AuthService {
   }
 
   /**
+   * Activate PSP user (re-enables API access)
+   */
+  async activatePspUser(userId: string): Promise<{
+    success: boolean;
+    message: string;
+  }> {
+    const user = await this.userService.findOne(userId);
+
+    if (user.userType !== UserType.PSP) {
+      throw new BadRequestException('Only PSP users can be activated this way');
+    }
+
+    await this.userService.updateStatus(userId, UserStatus.ACTIVE);
+
+    this.logger.log(`PSP user activated: ${user.email} (ID: ${user.id})`);
+
+    return {
+      success: true,
+      message: 'PSP user activated successfully',
+    };
+  }
+
+  /**
+   * Soft delete PSP user (API key stops working immediately)
+   */
+  async deletePspUser(userId: string): Promise<void> {
+    const user = await this.userService.findOne(userId);
+
+    if (user.userType !== UserType.PSP) {
+      throw new BadRequestException('Only PSP users can be deleted this way');
+    }
+
+    await this.userService.remove(userId);
+
+    this.logger.log(`PSP user deleted: ${user.email} (ID: ${user.id})`);
+  }
+
+  /**
+   * PSP user counts for the admin user-management page
+   */
+  async getPspStatistics(): Promise<{ total: number; active: number; inactive: number }> {
+    const [total, active, inactive] = await Promise.all([
+      this.userService.countByType(UserType.PSP),
+      this.userService.countByType(UserType.PSP, UserStatus.ACTIVE),
+      this.userService.countByType(UserType.PSP, UserStatus.INACTIVE),
+    ]);
+
+    return { total, active, inactive };
+  }
+
+  /**
    * Generate secure API key
    * Format: ucg_psp_{56_random_characters}
    */

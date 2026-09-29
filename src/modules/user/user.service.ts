@@ -259,6 +259,15 @@ export class UserService {
   }
 
   /**
+   * Count non-deleted users of a type, optionally by status
+   */
+  async countByType(userType: UserType, status?: UserStatus): Promise<number> {
+    return await this.userRepository.count({
+      where: { userType, deletedAt: IsNull(), ...(status ? { status } : {}) },
+    });
+  }
+
+  /**
    * Get user statistics
    */
   async getStatistics(spScope?: SpUserScope) {

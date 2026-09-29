@@ -3,6 +3,7 @@ import {
   Post,
   Put,
   Get,
+  Delete,
   Param,
   Body,
   UseGuards,
@@ -28,6 +29,18 @@ import { UserRole } from '../user/entities/user.entity';
 @ApiBearerAuth()
 export class PspManagementController {
   constructor(private readonly authService: AuthService) {}
+
+  /**
+   * PSP user statistics
+   * Admin only
+   */
+  @Get('statistics')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Get PSP user statistics (Admin only)' })
+  @ApiResponse({ status: 200, schema: { example: { total: 3, active: 2, inactive: 1 } } })
+  async getStatistics() {
+    return await this.authService.getPspStatistics();
+  }
 
   /**
    * Create a new PSP user
@@ -154,5 +167,33 @@ export class PspManagementController {
   @ApiResponse({ status: 404, description: 'PSP user not found' })
   async deactivatePspUser(@Param('userId') userId: string) {
     return await this.authService.deactivatePspUser(userId);
+  }
+
+  /**
+   * Activate PSP user
+   * Admin only
+   */
+  @Put(':userId/activate')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Activate PSP user (Admin only)' })
+  @ApiResponse({ status: 200, description: 'PSP user activated successfully' })
+  @ApiResponse({ status: 404, description: 'PSP user not found' })
+  async activatePspUser(@Param('userId') userId: string) {
+    return await this.authService.activatePspUser(userId);
+  }
+
+  /**
+   * Soft delete PSP user
+   * Admin only
+   */
+  @Delete(':userId')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Delete PSP user (Admin only)' })
+  @ApiResponse({ status: 204, description: 'PSP user deleted successfully' })
+  @ApiResponse({ status: 404, description: 'PSP user not found' })
+  async deletePspUser(@Param('userId') userId: string): Promise<void> {
+    await this.authService.deletePspUser(userId);
   }
 }
