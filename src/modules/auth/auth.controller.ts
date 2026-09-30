@@ -10,6 +10,8 @@ import {
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
+import { SpLoginDto, SpSwitchDto } from './dto/sp-login.dto';
+import { SpRequestUser } from './strategies/sp-jwt.strategy';
 import { RegisterDto } from './dto/register.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
@@ -19,7 +21,6 @@ import { LocalAuthGuard } from './guards/local-auth.guard';
 import { Public } from './decorators/public.decorator';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { User } from '../user/entities/user.entity';
-import { ServiceProvider } from '../service-provider/entities/service-provider.entity';
 import { UserResponseDto } from '../user/dto/user-response.dto';
 
 @ApiTags('Authentication')
@@ -152,13 +153,40 @@ export class AuthController {
     },
   })
   @ApiResponse({ status: 401, description: 'Invalid credentials or account not approved' })
-  async spLogin(@Body() loginDto: LoginDto): Promise<{
-    accessToken: string;
-    refreshToken: string;
-    serviceProvider: any;
-    user?: any;
-  }> {
+  async spLogin(@Body() loginDto: SpLoginDto) {
     return await this.authService.spLogin(loginDto);
+  }
+
+  /**
+   * List the service providers the logged-in SP user can switch between
+   */
+  @ApiBearerAuth()
+  @UseGuards(SpJwtAuthGuard)
+  @Get('sp/service-providers')
+  @ApiOperation({
+    summary: 'List service providers available to the current SP user',
+    description: 'Returns every active service provider this login can switch into, including the current one.',
+  })
+  @ApiResponse({ status: 200, description: 'Service providers retrieved successfully' })
+  async spListServiceProviders(@CurrentUser() current: SpRequestUser) {
+    return await this.authService.spListServiceProviders(current.userId, current);
+  }
+
+  /**
+   * Switch the SP session to another service provider
+   */
+  @ApiBearerAuth()
+  @UseGuards(SpJwtAuthGuard)
+  @Post('sp/switch')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Switch to another service provider',
+    description: 'Issues new tokens for the given service provider. Response has the same shape as SP login.',
+  })
+  @ApiResponse({ status: 200, description: 'Switched successfully' })
+  @ApiResponse({ status: 401, description: 'No access to that service provider, or session predates multi-SP support' })
+  async spSwitch(@CurrentUser() current: SpRequestUser, @Body() dto: SpSwitchDto) {
+    return await this.authService.spSwitchServiceProvider(current.userId, dto.serviceProviderId);
   }
 
   /**
@@ -220,11 +248,11 @@ Required fields:
   @ApiResponse({ status: 400, description: 'Current password is incorrect' })
   @ApiResponse({ status: 401, description: 'Unauthorized - invalid token' })
   async spChangePassword(
-    @CurrentUser() serviceProvider: ServiceProvider,
+    @CurrentUser() current: SpRequestUser,
     @Body() changePasswordDto: ChangePasswordDto,
   ): Promise<{ message: string }> {
     await this.authService.spChangePassword(
-      serviceProvider.email,
+      { userId: current.userId, email: current.email },
       changePasswordDto.currentPassword,
       changePasswordDto.newPassword,
     );

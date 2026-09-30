@@ -24,6 +24,8 @@ import {RolesGuard} from '../auth/guards/roles.guard';
 import {CurrentUser} from '../auth/decorators/current-user.decorator';
 import {RequirePermissions} from '../auth/decorators/require-permissions.decorator';
 import {User} from '../user/entities/user.entity';
+import {SpMembershipService} from '../user/sp-membership.service';
+import {LinkUserDto} from './dto/link-user.dto';
 
 @ApiTags('Service Providers')
 @ApiBearerAuth()
@@ -32,6 +34,7 @@ import {User} from '../user/entities/user.entity';
 export class ServiceProviderController {
   constructor(
     private readonly serviceProviderService: ServiceProviderService,
+    private readonly spMembershipService: SpMembershipService,
   ) {}
 
   @Post()
@@ -176,6 +179,45 @@ export class ServiceProviderController {
   @ApiResponse({ status: 404, description: 'Service provider not found' })
   async remove(@Param('id') id: string) {
     await this.serviceProviderService.remove(id);
+  }
+
+  // ==================== Linked User Endpoints ====================
+  // Users from another service provider who can also log in to this one (one login, many SPs).
+
+  @Get(':id/linked-users')
+  @RequirePermissions('service-providers:read')
+  @ApiOperation({ summary: 'List users linked to this service provider from other service providers' })
+  @ApiParam({ name: 'id', description: 'Service provider UUID' })
+  @ApiResponse({ status: 200, description: 'Linked users retrieved successfully' })
+  async listLinkedUsers(@Param('id') id: string) {
+    return await this.spMembershipService.listLinkedUsers(id);
+  }
+
+  @Post(':id/linked-users')
+  @RequirePermissions('service-providers:update')
+  @ApiOperation({ summary: 'Give an existing SP user access to this service provider' })
+  @ApiParam({ name: 'id', description: 'Service provider UUID' })
+  @ApiResponse({ status: 201, description: 'User linked successfully' })
+  @ApiResponse({ status: 404, description: 'Service provider or user not found' })
+  @ApiResponse({ status: 409, description: 'User already has access to this service provider' })
+  async linkUser(
+    @Param('id') id: string,
+    @Body() dto: LinkUserDto,
+    @CurrentUser() user: User,
+  ) {
+    return await this.spMembershipService.linkUser(id, dto, user.id);
+  }
+
+  @Delete(':id/linked-users/:userId')
+  @RequirePermissions('service-providers:update')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: "Remove a linked user's access to this service provider" })
+  @ApiParam({ name: 'id', description: 'Service provider UUID' })
+  @ApiParam({ name: 'userId', description: 'User UUID' })
+  @ApiResponse({ status: 204, description: 'User unlinked successfully' })
+  @ApiResponse({ status: 404, description: 'User is not linked to this service provider' })
+  async unlinkUser(@Param('id') id: string, @Param('userId') userId: string) {
+    await this.spMembershipService.unlinkUser(id, userId);
   }
 
   // ==================== Bank Account Endpoints ====================

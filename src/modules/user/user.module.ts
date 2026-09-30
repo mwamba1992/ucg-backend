@@ -5,17 +5,20 @@ import { UserController } from './user.controller';
 import { SpUserController } from './sp-user.controller';
 import { RolesController } from './roles.controller';
 import { User } from './entities/user.entity';
+import { UserServiceProvider } from './entities/user-service-provider.entity';
+import { ServiceProvider } from '../service-provider/entities/service-provider.entity';
+import { SpMembershipService } from './sp-membership.service';
 import { NotificationModule } from '../notification/notification.module';
 import { PermissionModule } from '../permission/permission.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User]),
+    TypeOrmModule.forFeature([User, UserServiceProvider, ServiceProvider]),
     NotificationModule,
     PermissionModule,
   ],
   controllers: [UserController, SpUserController, RolesController],
-  providers: [UserService],
-  exports: [UserService],
+  providers: [UserService, SpMembershipService],
+  exports: [UserService, SpMembershipService],
 })
 export class UserModule {}

@@ -11,12 +11,14 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { UserService } from '../user/user.service';
+import { SpMembershipService, SpAccess } from '../user/sp-membership.service';
 import { User, UserStatus, UserRole, UserType } from '../user/entities/user.entity';
 import { ServiceProvider, OnboardingStatus, ServiceProviderType } from '../service-provider/entities/service-provider.entity';
 import { ServiceProviderContact } from '../service-provider/entities/service-provider-contact.entity';
 import { ServiceProviderBankAccount } from '../service-provider/entities/service-provider-bank-account.entity';
 import { ServiceProviderSettings, SettlementFrequency } from '../service-provider/entities/service-provider-settings.entity';
 import { LoginDto } from './dto/login.dto';
+import { SpLoginDto } from './dto/sp-login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
 import { JwtPayload } from './strategies/jwt.strategy';
@@ -38,6 +40,7 @@ export class AuthService {
     private readonly configService: ConfigService,
     private readonly httpService: HttpService,
     private readonly notificationService: NotificationService,
+    private readonly spMembershipService: SpMembershipService,
     @InjectRepository(ServiceProvider)
     private readonly serviceProviderRepository: Repository<ServiceProvider>,
     @InjectRepository(ServiceProviderContact)
@@ -326,12 +329,7 @@ export class AuthService {
    * SECURITY: Requires User account with password validation
    * Supports both main SP accounts and SP staff users
    */
-  async spLogin(loginDto: LoginDto): Promise<{
-    accessToken: string;
-    refreshToken: string;
-    serviceProvider: any;
-    user?: any;
-  }> {
+  async spLogin(loginDto: SpLoginDto) {
     // STEP 1: Find user by email first
     const userRecord = await this.userService.findByEmail(loginDto.email);
 
@@ -358,26 +356,79 @@ export class AuthService {
       throw new UnauthorizedException('User account has been deleted');
     }
 
-    // STEP 4: Find associated service provider
-    // First try by email (main SP account), then by createdBy (staff user)
-    let serviceProvider = await this.serviceProviderRepository.findOne({
-      where: { email: loginDto.email },
-      relations: ['contact', 'bankAccounts', 'settings'],
-    });
+    // STEP 4: Resolve the service providers this user can act for and pick one
+    const access = await this.spMembershipService.listAccess(userRecord);
+    const selected = this.selectServiceProvider(access, loginDto.serviceProviderId);
 
-    // If not found by email, this is a staff user - find SP by createdBy
-    if (!serviceProvider && userRecord.createdBy) {
-      serviceProvider = await this.serviceProviderRepository.findOne({
-        where: { id: userRecord.createdBy },
-        relations: ['contact', 'bankAccounts', 'settings'],
-      });
+    // Update last login time
+    await this.userService.updateLastLogin(userRecord.id);
+
+    return this.buildSpSession(userRecord.id, selected, access);
+  }
+
+  /**
+   * Switch an authenticated SP user to another service provider they have access to.
+   * Only works with tokens that carry a userId (issued since multi-SP support).
+   */
+  async spSwitchServiceProvider(userId: string | undefined, serviceProviderId: string) {
+    const user = await this.getActiveSpUser(userId);
+    const access = await this.spMembershipService.listAccess(user);
+    const selected = this.selectServiceProvider(access, serviceProviderId);
+    return this.buildSpSession(user.id, selected, access);
+  }
+
+  /**
+   * List the service providers the current SP user can switch between.
+   * Tokens issued before multi-SP support have no userId: return just the current SP.
+   */
+  async spListServiceProviders(userId: string | undefined, current: ServiceProvider) {
+    if (!userId) {
+      return [this.toSpSummary({ serviceProvider: current, role: null, isPrimary: true, isDefault: false })];
     }
+    const user = await this.getActiveSpUser(userId);
+    const access = await this.spMembershipService.listAccess(user);
+    return access
+      .filter((a) => SpMembershipService.isUsable(a.serviceProvider))
+      .map((a) => this.toSpSummary(a));
+  }
 
-    if (!serviceProvider) {
+  private async getActiveSpUser(userId: string | undefined): Promise<User> {
+    if (!userId) {
+      throw new UnauthorizedException('Session does not support switching service providers. Please log in again.');
+    }
+    const user = await this.userService.findOne(userId).catch(() => null);
+    if (!user || user.userType !== UserType.SERVICE_PROVIDER || user.status !== UserStatus.ACTIVE) {
+      throw new UnauthorizedException('User account is not active');
+    }
+    return user;
+  }
+
+  /**
+   * Pick the SP to open. An explicitly requested SP must be one the user has access to.
+   * Otherwise: the user's default linked SP, then their primary SP, then any usable one.
+   * Users without linked SPs get exactly the legacy behaviour (their primary SP, same errors).
+   */
+  private selectServiceProvider(access: SpAccess[], requestedId?: string): SpAccess {
+    if (!access.length) {
       throw new UnauthorizedException('No associated service provider found');
     }
 
-    // STEP 5: Verify service provider is active and approved
+    let selected: SpAccess | undefined;
+    if (requestedId) {
+      selected = access.find((a) => a.serviceProvider.id === requestedId);
+      if (!selected) {
+        throw new UnauthorizedException('You do not have access to this service provider');
+      }
+    } else {
+      const usable = access.filter((a) => SpMembershipService.isUsable(a.serviceProvider));
+      selected =
+        usable.find((a) => a.isDefault) ??
+        usable.find((a) => a.isPrimary) ??
+        usable[0] ??
+        access[0];
+    }
+
+    const serviceProvider = selected.serviceProvider;
     if (!serviceProvider.isActive) {
       throw new UnauthorizedException('Service Provider account is not active');
     }
@@ -390,26 +441,39 @@ export class AuthService {
       throw new UnauthorizedException('Service Provider account has been deleted');
     }
 
-    // Get full user details including mustChangePassword flag
-    const fullUser = await this.userService.findOne(userRecord.id);
+    return selected;
+  }
 
-    // Update last login time
-    await this.userService.updateLastLogin(userRecord.id);
+  private toSpSummary(a: SpAccess) {
+    return {
+      id: a.serviceProvider.id,
+      spCode: a.serviceProvider.spCode,
+      businessName: a.serviceProvider.businessName,
+      businessType: a.serviceProvider.businessType,
+      role: a.role,
+      isPrimary: a.isPrimary,
+      isDefault: a.isDefault,
+    };
+  }
+
+  /** Same response shape as the original SP login, plus the list of switchable SPs. */
+  private async buildSpSession(userId: string, selected: SpAccess, access: SpAccess[]) {
+    const serviceProvider = selected.serviceProvider;
+    const fullUser = await this.userService.findOne(userId);
 
     const user = {
-      id: userRecord.id,
-      firstName: userRecord.firstName,
-      lastName: userRecord.lastName,
-      email: userRecord.email,
-      phoneNumber: userRecord.phoneNumber,
-      role: userRecord.role,
-      userType: userRecord.userType,
-      status: userRecord.status,
+      id: fullUser.id,
+      firstName: fullUser.firstName,
+      lastName: fullUser.lastName,
+      email: fullUser.email,
+      phoneNumber: fullUser.phoneNumber,
+      role: selected.role,
+      userType: fullUser.userType,
+      status: fullUser.status,
       mustChangePassword: fullUser.mustChangePassword,
     };
 
-    // Generate SP tokens
-    const tokens = await this.generateSpTokens(serviceProvider);
+    const tokens = await this.generateSpTokens(serviceProvider, fullUser.id, selected.role);
 
     return {
       ...tokens,
@@ -424,13 +488,16 @@ export class AuthService {
         isActive: serviceProvider.isActive,
       },
       user,
+      serviceProviders: access
+        .filter((a) => SpMembershipService.isUsable(a.serviceProvider))
+        .map((a) => this.toSpSummary(a)),
     };
   }
 
   /**
    * Generate SP access and refresh tokens
    */
-  private async generateSpTokens(serviceProvider: ServiceProvider): Promise<{
+  private async generateSpTokens(serviceProvider: ServiceProvider, userId: string, role: string): Promise<{
     accessToken: string;
     refreshToken: string;
   }> {
@@ -439,6 +506,8 @@ export class AuthService {
       email: serviceProvider.email,
       spCode: serviceProvider.spCode,
       type: 'SERVICE_PROVIDER',
+      userId,
+      role,
     };
 
     const [accessToken, refreshToken] = await Promise.all([
@@ -600,24 +669,21 @@ export class AuthService {
    * Change password for Service Provider user
    */
   async spChangePassword(
-    email: string,
+    identity: { userId?: string; email: string },
     currentPassword: string,
     newPassword: string,
   ): Promise<void> {
-    // Find the user by email (SP users have a User record created during approval)
-    const user = await this.userService.findByEmail(email);
+    // Newer tokens carry the user id. Older tokens only have the SP email, which matches the
+    // SP owner's User record (created during approval).
+    const user = identity.userId
+      ? await this.userService.findOne(identity.userId).catch(() => null)
+      : await this.userService.findByEmail(identity.email);
 
     if (!user) {
       throw new BadRequestException('User account not found');
     }
 
-    // Verify current password
-    const isPasswordValid = await user.validatePassword(currentPassword);
-    if (!isPasswordValid) {
-      throw new BadRequestException('Current password is incorrect');
-    }
-
-    // Change the password
+    // Change the password (verifies the current password)
     await this.userService.changePassword(user.id, currentPassword, newPassword);
 
     // Reset mustChangePassword flag
@@ -625,7 +691,7 @@ export class AuthService {
       mustChangePassword: false,
     } as any);
 
-    this.logger.log(`Password changed successfully for SP user: ${email}`);
+    this.logger.log(`Password changed successfully for SP user: ${user.email}`);
   }
 
   /**
