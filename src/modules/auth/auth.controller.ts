@@ -173,6 +173,41 @@ export class AuthController {
   }
 
   /**
+   * Add another service provider from the SP portal
+   */
+  @ApiBearerAuth()
+  @UseGuards(SpJwtAuthGuard)
+  @Post('sp/service-providers')
+  @ApiOperation({
+    summary: 'Add another service provider (SP_ADMIN only)',
+    description: `Registers a new service provider owned by the current login. Same body as /auth/sp/register.
+It starts PENDING and needs admin approval. Once approved it appears in /auth/sp/service-providers and
+can be opened with /auth/sp/switch; no separate login is created for it.
+
+The new service provider's email must be its own business email, not one already used by a user.`,
+  })
+  @ApiResponse({ status: 201, description: 'Service provider submitted for approval' })
+  @ApiResponse({ status: 403, description: 'Caller is not SP_ADMIN in the current service provider' })
+  @ApiResponse({ status: 409, description: 'Email already used by a service provider or user' })
+  async spRequestServiceProvider(@CurrentUser() current: SpRequestUser, @Body() registerDto: any) {
+    return await this.authService.spRequestServiceProvider(current, registerDto);
+  }
+
+  /**
+   * Status of service providers the current user has requested
+   */
+  @ApiBearerAuth()
+  @UseGuards(SpJwtAuthGuard)
+  @Get('sp/service-providers/requests')
+  @ApiOperation({
+    summary: 'List pending or rejected service providers requested by the current user',
+  })
+  @ApiResponse({ status: 200, description: 'Requests retrieved successfully' })
+  async spListServiceProviderRequests(@CurrentUser() current: SpRequestUser) {
+    return await this.authService.spListServiceProviderRequests(current.userId);
+  }
+
+  /**
    * Switch the SP session to another service provider
    */
   @ApiBearerAuth()

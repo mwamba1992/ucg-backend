@@ -13,9 +13,11 @@ import {
   Request,
   BadRequestException,
   NotFoundException,
+  ConflictException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { UserService, SpUserScope } from './user.service';
+import { SpMembershipService } from './sp-membership.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { QueryUserDto } from './dto/query-user.dto';
@@ -33,7 +35,10 @@ import { User, UserType, UserRole, UserStatus } from './entities/user.entity';
 @UseGuards(SpJwtAuthGuard)
 @Controller('sp/users')
 export class SpUserController {
-  constructor(private readonly userService: UserService) {}
+  constructor(
+    private readonly userService: UserService,
+    private readonly spMembershipService: SpMembershipService,
+  ) {}
 
   private spScope(req: any): SpUserScope {
     return { id: req.user.serviceProviderId, email: req.user.email };
@@ -57,6 +62,12 @@ export class SpUserController {
     @Request() req: any,
   ): Promise<UserResponseDto> {
     const serviceProviderId = req.user.serviceProviderId;
+
+    // SP logins resolve their service provider by email first, so a staff user must not take
+    // another service provider's email (it would log into that SP instead of this one).
+    if (await this.spMembershipService.isServiceProviderEmail(createUserDto.email)) {
+      throw new ConflictException('This email belongs to a service provider. Use a personal email for staff users.');
+    }
 
     // Ensure the user being created is a SERVICE_PROVIDER type
     if (createUserDto.userType && createUserDto.userType !== UserType.SERVICE_PROVIDER) {
@@ -126,7 +137,15 @@ export class SpUserController {
     const serviceProviderId = req.user.serviceProviderId;
 
     // Verify the user belongs to this SP
-    await this.findOwnUser(id, req);
+    const existing = await this.findOwnUser(id, req);
+
+    if (
+      updateUserDto.email &&
+      updateUserDto.email !== existing.email &&
+      (await this.spMembershipService.isServiceProviderEmail(updateUserDto.email))
+    ) {
+      throw new ConflictException('This email belongs to a service provider. Use a personal email for staff users.');
+    }
 
     // Prevent changing userType
     if (updateUserDto.userType && updateUserDto.userType !== UserType.SERVICE_PROVIDER) {

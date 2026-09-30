@@ -102,6 +102,10 @@ export class SpMembershipService {
     return membership ? membership.role || user.role : null;
   }
 
+  async isServiceProviderEmail(email: string): Promise<boolean> {
+    return (await this.serviceProviderRepository.count({ where: { email } })) > 0;
+  }
+
   // ---------------------------------------------------------------------------
   // Admin management of additional service provider access
   // ---------------------------------------------------------------------------
@@ -133,6 +137,12 @@ export class SpMembershipService {
     linkedBy?: string,
   ): Promise<UserServiceProvider> {
     const serviceProvider = await this.findServiceProvider(serviceProviderId);
+
+    // A link on a not-yet-approved SP means "requested from the SP portal" (see approval),
+    // so admins can only link users once the SP is approved.
+    if (!SpMembershipService.isUsable(serviceProvider)) {
+      throw new BadRequestException('Service provider must be approved and active before linking users');
+    }
 
     if (data.role && !SP_ROLES.includes(data.role)) {
       throw new BadRequestException(`Invalid role. Allowed: ${SP_ROLES.join(', ')}`);
@@ -171,6 +181,24 @@ export class SpMembershipService {
         createdBy: linkedBy,
       }),
     );
+  }
+
+  /** Link the SP_ADMIN who requested a new SP from the portal. */
+  async linkRequester(serviceProviderId: string, userId: string): Promise<UserServiceProvider> {
+    return this.membershipRepository.save(
+      this.membershipRepository.create({
+        userId,
+        serviceProviderId,
+        role: UserRole.SP_ADMIN,
+        isDefault: false,
+        createdBy: userId,
+      }),
+    );
+  }
+
+  /** True when the SP was requested by (or linked to) an existing login. */
+  async hasLinkedUsers(serviceProviderId: string): Promise<boolean> {
+    return (await this.membershipRepository.count({ where: { serviceProviderId } })) > 0;
   }
 
   async unlinkUser(serviceProviderId: string, userId: string): Promise<void> {

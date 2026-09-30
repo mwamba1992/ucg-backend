@@ -19,6 +19,7 @@ import { UpdateBankAccountDto } from './dto/update-bank-account.dto';
 import { WorkflowService } from '../workflow/workflow.service';
 import { NotificationService } from '../notification/notification.service';
 import { UserService } from '../user/user.service';
+import { SpMembershipService } from '../user/sp-membership.service';
 import { UserType, UserRole } from '../user/entities/user.entity';
 import * as crypto from 'crypto';
 
@@ -38,6 +39,7 @@ export class ServiceProviderService {
     private readonly workflowService: WorkflowService,
     private readonly notificationService: NotificationService,
     private readonly userService: UserService,
+    private readonly spMembershipService: SpMembershipService,
   ) {}
 
   /**
@@ -616,8 +618,12 @@ export class ServiceProviderService {
     try {
       // Check if user already exists
       const existingUser = await this.userService.findByEmail(serviceProvider.email);
+      // SPs added from the SP portal are already linked to the requesting login
+      const requestedByExistingUser = await this.spMembershipService.hasLinkedUsers(serviceProvider.id);
 
-      if (!existingUser) {
+      if (requestedByExistingUser) {
+        this.logger.log(`SP ${serviceProvider.spCode} was requested by an existing user; no new login created`);
+      } else if (!existingUser) {
         this.logger.log(`Creating user account for SP: ${serviceProvider.email}`);
 
         // Get contact person name from contact

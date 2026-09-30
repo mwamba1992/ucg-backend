@@ -3,6 +3,7 @@ import {
   UnauthorizedException,
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -540,6 +541,29 @@ export class AuthService {
     this.logger.log('SP Registration Request Received');
     this.logger.log(`Payload: ${JSON.stringify(registerDto, null, 2)}`);
 
+    const serviceProvider = await this.createPendingServiceProvider(registerDto);
+
+    return {
+      success: true,
+      message: 'Registration successful. Your account is pending approval. You will be notified once approved.',
+      data: {
+        id: serviceProvider.id,
+        spCode: serviceProvider.spCode,
+        businessName: serviceProvider.businessName,
+        businessType: serviceProvider.businessType,
+        email: serviceProvider.email,
+        phoneNumber: serviceProvider.phoneNumber,
+        status: serviceProvider.status,
+        isActive: serviceProvider.isActive,
+      },
+    };
+  }
+
+  /**
+   * Create a PENDING service provider with its contact, bank accounts and settings.
+   * Shared by public self-registration and "add another service provider" in the SP portal.
+   */
+  private async createPendingServiceProvider(registerDto: any): Promise<ServiceProvider> {
     // Check if service provider with email already exists
     const existingSp = await this.serviceProviderRepository.findOne({
       where: { email: registerDto.email },
@@ -629,20 +653,7 @@ export class AuthService {
 
       this.logger.log(`SP Registration completed successfully for: ${serviceProvider.email}`);
 
-      return {
-        success: true,
-        message: 'Registration successful. Your account is pending approval. You will be notified once approved.',
-        data: {
-          id: serviceProvider.id,
-          spCode: serviceProvider.spCode,
-          businessName: serviceProvider.businessName,
-          businessType: serviceProvider.businessType,
-          email: serviceProvider.email,
-          phoneNumber: serviceProvider.phoneNumber,
-          status: serviceProvider.status,
-          isActive: serviceProvider.isActive,
-        },
-      };
+      return serviceProvider;
     } catch (error) {
       this.logger.error('SP Registration failed with error:', error);
       this.logger.error(`Error details: ${error.message}`);
@@ -651,6 +662,69 @@ export class AuthService {
       }
       throw error;
     }
+  }
+
+  /**
+   * "Add another service provider" from the SP portal.
+   * Creates a PENDING SP linked to the requesting user as SP_ADMIN. On approval no new
+   * login is created for it; it appears in the requester's switch list instead.
+   */
+  async spRequestServiceProvider(
+    requester: { userId?: string; userRole?: string },
+    registerDto: any,
+  ) {
+    const user = await this.getActiveSpUser(requester.userId);
+
+    if (requester.userRole !== UserRole.SP_ADMIN) {
+      throw new ForbiddenException('Only SP_ADMIN users can add service providers');
+    }
+
+    // The SP email must not belong to any user: SP logins resolve their primary SP by email,
+    // so reusing a user's email would silently move that user onto the new SP.
+    if (registerDto?.email && (await this.userService.findByEmail(registerDto.email))) {
+      throw new ConflictException('This email is already used by a user account. Use the business email of the new service provider.');
+    }
+
+    const serviceProvider = await this.createPendingServiceProvider(registerDto);
+    await this.spMembershipService.linkRequester(serviceProvider.id, user.id);
+
+    this.logger.log(`SP ${serviceProvider.spCode} requested by user ${user.email}`);
+
+    return {
+      success: true,
+      message: 'Service provider submitted. It will appear in your list once approved.',
+      data: {
+        id: serviceProvider.id,
+        spCode: serviceProvider.spCode,
+        businessName: serviceProvider.businessName,
+        businessType: serviceProvider.businessType,
+        email: serviceProvider.email,
+        phoneNumber: serviceProvider.phoneNumber,
+        status: serviceProvider.status,
+        isActive: serviceProvider.isActive,
+      },
+    };
+  }
+
+  /**
+   * Service providers linked to the current user that are not usable yet (pending/rejected/inactive),
+   * so the portal can show the status of "add service provider" requests.
+   */
+  async spListServiceProviderRequests(userId: string | undefined) {
+    if (!userId) return [];
+    const user = await this.getActiveSpUser(userId);
+    const access = await this.spMembershipService.listAccess(user);
+    return access
+      .filter((a) => !a.isPrimary && !a.serviceProvider.deletedAt && !SpMembershipService.isUsable(a.serviceProvider))
+      .map((a) => ({
+        id: a.serviceProvider.id,
+        spCode: a.serviceProvider.spCode,
+        businessName: a.serviceProvider.businessName,
+        businessType: a.serviceProvider.businessType,
+        status: a.serviceProvider.status,
+        isActive: a.serviceProvider.isActive,
+        rejectionReason: a.serviceProvider.rejectionReason,
+      }));
   }
 
   /**
