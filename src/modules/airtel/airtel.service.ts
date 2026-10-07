@@ -111,9 +111,18 @@ export class AirtelService {
   /**
    * Verify the credentials carried in the request body. Returns true when
    * enforcement is off, so callers can guard unconditionally.
+   *
+   * Credentials are optional: Airtel's live bill query and payment posting
+   * requests carry no <USERNAME>/<PASSWORD>, so a request without them (missing
+   * or empty tags) is accepted. When either one is sent, both must match.
    */
   private isAuthorized(username?: string, password?: string): boolean {
     if (!this.isAuthEnforced()) {
+      return true;
+    }
+
+    const isBlank = (value?: string) => typeof value !== 'string' || value.trim() === '';
+    if (isBlank(username) && isBlank(password)) {
       return true;
     }
 
